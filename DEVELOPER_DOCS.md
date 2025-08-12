@@ -1,5 +1,7 @@
 # Developer Documentation: Logical Books
 
+**IMPORTANT NOTE:** Development on this Flask application has ceased. A new version is currently under development using Node.js, React, and PostgreSQL.
+
 This document provides an in-depth look into the architecture, technologies, and future roadmap for the Logical Books application, aiming to transform it into a production-ready bookkeeping solution.
 
 ## 1. Project Overview and Functionality
