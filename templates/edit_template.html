@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="mb-4">Edit Import Template</h1>
+    <form action="{{ url_for('edit_template', template_id=template.id) }}" method="post" class="mt-3">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label for="name" class="form-label">Template Name:</label>
+                <input type="text" id="name" name="name" class="form-control" value="{{ template.name }}" required>
+            </div>
+            <div class="col-md-2">
+                <label for="date_col" class="form-label">Date Column (e.g., A):</label>
+                <input type="text" id="date_col" name="date_col" class="form-control" value="{{ template.date_col }}" required>
+            </div>
+            <div class="col-md-2">
+                <label for="description_col" class="form-label">Description Column (e.g., B):</label>
+                <input type="text" id="description_col" name="description_col" class="form-control" value="{{ template.description_col }}" required>
+            </div>
+            <div class="col-md-2">
+                <label for="category_col" class="form-label">Category Column (e.g., F):</label>
+                <input type="text" id="category_col" name="category_col" class="form-control" value="{{ template.category_col or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label for="notes_col" class="form-label">Notes Column (e.g., G):</label>
+                <input type="text" id="notes_col" name="notes_col" class="form-control" value="{{ template.notes_col or '' }}">
+            </div>
+            <div class="col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="has_header" name="has_header" value="1" {% if template.has_header %}checked{% endif %}>
+                    <label class="form-check-label" for="has_header">
+                        CSV has a header row
+                    </label>
+                </div>
+            </div>
+            <div class="col-12">
+                <h5>Amount Options:</h5>
+            </div>
+            <div class="col-md-3">
+                <label for="amount_col" class="form-label">Single Amount Column (e.g., C):</label>
+                <input type="text" id="amount_col" name="amount_col" class="form-control" value="{{ template.amount_col }}">
+            </div>
+            <div class="col-md-1 text-center align-self-center">
+                OR
+            </div>
+            <div class="col-md-3">
+                <label for="debit_col" class="form-label">Debit Column (e.g., D):</label>
+                <input type="text" id="debit_col" name="debit_col" class="form-control" value="{{ template.debit_col }}">
+            </div>
+            <div class="col-md-3">
+                <label for="credit_col" class="form-label">Credit Column (e.g., E):</label>
+                <input type="text" id="credit_col" name="credit_col" class="form-control" value="{{ template.credit_col }}">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-success">Update Template</button>
+                <a href="{{ url_for('import_page') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </div>
+    </form>
+{% endblock %}

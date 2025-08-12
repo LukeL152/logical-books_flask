@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+
+# Database
+bookkeeping.db
+instance/
+
+# Pytest cache
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Gemini CLI
+GEMINI.md
+.gemini/

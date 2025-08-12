@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="mb-4">Rules</h1>
+
+    <!-- Add Rule Form -->
+    <form action="{{ url_for('add_rule') }}" method="post" class="mb-4 p-3 border rounded">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="name" class="form-label">Rule Name</label>
+                <input type="text" id="name" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label for="keyword" class="form-label">Keyword (optional)</label>
+                <input type="text" id="keyword" name="keyword" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label for="condition" class="form-label">Value Condition</label>
+                <select id="condition" name="condition" class="form-select">
+                    <option value="">None</option>
+                    <option value="less_than">Less Than</option>
+                    <option value="greater_than">Greater Than</option>
+                    <option value="equals">Equals</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="value" class="form-label">Value</label>
+                <input type="number" step="0.01" id="value" name="value" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label for="category" class="form-label">Category (optional)</label>
+                <input type="text" id="category" name="category" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label for="transaction_type" class="form-label">Set Type (optional)</label>
+                <select id="transaction_type" name="transaction_type" class="form-select">
+                    <option value="">-- No Change --</option>
+                    <option value="income">Income</option>
+                    <option value="expense">Expense</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="is_automatic" name="is_automatic" value="true" checked>
+                    <label class="form-check-label" for="is_automatic">Automatic</label>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary">Add Rule</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Existing Rules -->
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Rule Name</th>
+                <th>Trigger</th>
+                <th>Category</th>
+                <th>Transaction Type</th>
+                <th>Automatic</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rule in rules %}
+            <tr>
+                <td>{{ rule.name }}</td>
+                <td>
+                    {% if rule.keyword %}
+                        Keyword: <strong>{{ rule.keyword }}</strong>
+                    {% endif %}
+                    {% if rule.condition and rule.value is not none %}
+                        <br>Value is {{ rule.condition.replace('_', ' ') }} <strong>{{ rule.value }}</strong>
+                    {% endif %}
+                </td>
+                <td>{{ rule.category }}</td>
+                <td>{{ rule.transaction_type }}</td>
+                <td>{{ "Yes" if rule.is_automatic else "No" }}</td>
+                <td>
+                    <a href="{{ url_for('edit_rule', rule_id=rule.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('delete_rule', rule_id=rule.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this rule?')">Delete</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

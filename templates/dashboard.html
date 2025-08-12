@@ -1,0 +1,177 @@
+
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="mb-4">Dashboard</h1>
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-header">Timeframe Income</div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ "%.2f"|format(m_income) }}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-danger mb-3">
+                <div class="card-header">Timeframe Expenses</div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ "%.2f"|format(m_expenses) }}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-header">Net Profit</div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ "%.2f"|format(net_profit) }}</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="btn-group" role="group" aria-label="Date Range Selection">
+                <a href="{{ url_for('dashboard', period='ytd') }}" class="btn btn-outline-primary">YTD</a>
+                <a href="{{ url_for('dashboard', period='current_month') }}" class="btn btn-outline-primary">Current Month</a>
+                <a href="{{ url_for('dashboard', period='last_3_months') }}" class="btn btn-outline-primary">Last 3 Months</a>
+            </div>
+            <form action="{{ url_for('dashboard') }}" method="POST" class="form-inline d-inline-block ms-3">
+                <label for="start_date" class="visually-hidden">Start Date</label>
+                <input type="date" id="start_date" name="start_date" class="form-control form-control-sm d-inline-block w-auto" value="{{ start_date }}">
+                <label for="end_date" class="visually-hidden">End Date</label>
+                <input type="date" id="end_date" name="end_date" class="form-control form-control-sm d-inline-block w-auto" value="{{ end_date }}">
+                <button type="submit" class="btn btn-primary btn-sm">Apply Custom Range</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-8">
+            <h2 class="h4">Income vs. Expense ({{ start_date }} to {{ end_date }})</h2>
+            <canvas id="incomeExpenseChart"></canvas>
+        </div>
+        <div class="col-md-4">
+            <h2 class="h4">Expense Breakdown ({{ start_date }} to {{ end_date }})</h2>
+            <canvas id="expensePieChart"></canvas>
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h2 class="h4">Account Summaries</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Asset Accounts</th>
+                                <th class="text-end">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for account, balance in asset_balances.items() %}
+                            <tr>
+                                <td>{{ account }}</td>
+                                <td class="text-end">{{ "%.2f"|format(balance) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Liability Accounts</th>
+                                <th class="text-end">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for account, balance in liability_balances.items() %}
+                            <tr>
+                                <td>{{ account }}</td>
+                                <td class="text-end">{{ "%.2f"|format(balance) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Bar Chart: Income vs Expense
+        const incomeExpenseCtx = document.getElementById('incomeExpenseChart').getContext('2d');
+        new Chart(incomeExpenseCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ bar_chart_labels|safe }},
+                datasets: [
+                    {
+                        label: 'Income',
+                        data: {{ bar_chart_income|safe }},
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Expense',
+                        data: {{ bar_chart_expense|safe }},
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Pie Chart: Expense Breakdown
+        const expensePieCtx = document.getElementById('expensePieChart').getContext('2d');
+        new Chart(expensePieCtx, {
+            type: 'pie',
+            data: {
+                labels: {{ pie_chart_labels|safe }},
+                datasets: [{
+                    label: 'Expenses',
+                    data: {{ pie_chart_data|safe }},
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(54, 162, 235, 0.2)',
+                        'rgba(255, 206, 86, 0.2)',
+                        'rgba(75, 192, 192, 0.2)',
+                        'rgba(153, 102, 255, 0.2)',
+                        'rgba(255, 159, 64, 0.2)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+    </script>
+{% endblock %}
