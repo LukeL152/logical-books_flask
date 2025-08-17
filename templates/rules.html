@@ -38,6 +38,22 @@
                     <option value="expense">Expense</option>
                 </select>
             </div>
+            <div class="col-md-2">
+                <label for="include_accounts" class="form-label">Include Accounts</label>
+                <select id="include_accounts" name="include_accounts" class="form-select" multiple>
+                    {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="exclude_accounts" class="form-label">Exclude Accounts</label>
+                <select id="exclude_accounts" name="exclude_accounts" class="form-select" multiple>
+                    {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="col-md-1">
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="is_automatic" name="is_automatic" value="true" checked>
@@ -56,6 +72,7 @@
             <tr>
                 <th>Rule Name</th>
                 <th>Trigger</th>
+                <th>Accounts</th>
                 <th>Category</th>
                 <th>Transaction Type</th>
                 <th>Automatic</th>
@@ -72,6 +89,19 @@
                     {% endif %}
                     {% if rule.condition and rule.value is not none %}
                         <br>Value is {{ rule.condition.replace('_', ' ') }} <strong>{{ rule.value }}</strong>
+                    {% endif %}
+                </td>
+                <td>
+                    {% set included_accounts = rule.accounts|selectattr('is_exclusion', 'equalto', false)|list %}
+                    {% set excluded_accounts = rule.accounts|selectattr('is_exclusion', 'equalto', true)|list %}
+                    {% if included_accounts %}
+                        <strong>Include:</strong> {{ included_accounts|map(attribute='account_id')|join(', ') }}<br>
+                    {% endif %}
+                    {% if excluded_accounts %}
+                        <strong>Exclude:</strong> {{ excluded_accounts|map(attribute='account_id')|join(', ') }}
+                    {% endif %}
+                    {% if not included_accounts and not excluded_accounts %}
+                        All Accounts
                     {% endif %}
                 </td>
                 <td>{{ rule.category }}</td>

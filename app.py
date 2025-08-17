@@ -43,7 +43,7 @@ class JournalEntry(db.Model):
 
 class ImportTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False, unique=True)
     date_col = db.Column(db.Integer, nullable=False)
     description_col = db.Column(db.Integer, nullable=False)
     amount_col = db.Column(db.Integer)
@@ -52,13 +52,20 @@ class ImportTemplate(db.Model):
     category_col = db.Column(db.Integer)
     notes_col = db.Column(db.Integer)
     has_header = db.Column(db.Boolean, nullable=False, default=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    negate_amount = db.Column(db.Boolean, nullable=False, default=False)
+    account = db.relationship('Account', backref=db.backref('import_template', uselist=False, cascade="all, delete-orphan"))
 
 class Budget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     category = db.Column(db.String(100), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class RuleAccountLink(db.Model):
+    __tablename__ = 'rule_account_link'
+    rule_id = db.Column(db.Integer, db.ForeignKey('rule.id'), primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), primary_key=True)
+    is_exclusion = db.Column(db.Boolean, nullable=False, default=False)
 
 class Rule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -70,6 +77,8 @@ class Rule(db.Model):
     transaction_type = db.Column(db.String(20), nullable=True)
     is_automatic = db.Column(db.Boolean, nullable=False, default=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    accounts = db.relationship('RuleAccountLink', backref='rule', cascade="all, delete-orphan")
+
 
 def col_to_index(col_name):
     """Converts a column name (e.g., 'A', 'B', 'AA') to a zero-based index."""
@@ -80,6 +89,16 @@ def col_to_index(col_name):
         index = index * 26 + (ord(char) - ord('A') + 1)
     return index - 1
 
+def index_to_col(index):
+    """Converts a zero-based index to a column name (e.g., 0 -> 'A', 1 -> 'B')."""
+    if index is None:
+        return ''
+    col = ''
+    while index >= 0:
+        col = chr(ord('A') + index % 26) + col
+        index = index // 26 - 1
+    return col
+
 def normalize_date(date_str):
     """Parses a date string from common formats and returns YYYY-MM-DD."""
     if not date_str:
@@ -87,9 +106,9 @@ def normalize_date(date_str):
     formats_to_try = [
         '%Y-%m-%d',  # YYYY-MM-DD
         '%m/%d/%Y',  # MM/DD/YYYY
-        '%m/%d/%y',  # MM/DD/YY
         '%d-%b-%Y',  # DD-Mon-YYYY (e.g., 25-Jul-2023)
         '%d-%B-%Y',  # DD-Month-YYYY (e.g., 25-July-2023)
+        '%m/%d/%y',  # MM/DD/YY
     ]
     for fmt in formats_to_try:
         try:
@@ -149,6 +168,7 @@ def delete_client(client_id):
     ImportTemplate.query.filter_by(client_id=client_id).delete()
     Account.query.filter_by(client_id=client_id).delete()
     Budget.query.filter_by(client_id=client_id).delete()
+    Rule.query.filter_by(client_id=client_id).delete()
     db.session.delete(client)
     db.session.commit()
     flash('Client deleted successfully.', 'success')
@@ -206,7 +226,7 @@ def dashboard():
     sorted_months = sorted(bar_chart_data.keys())
     bar_chart_labels = json.dumps(sorted_months)
     bar_chart_income = json.dumps([bar_chart_data[m]['income'] for m in sorted_months])
-    bar_chart_expense = json.dumps([-1 * bar_chart_data[m]['expense'] for m in sorted_months])
+    bar_chart_expense = json.dumps([bar_chart_data[m]['expense'] for m in sorted_months])
 
     # Expense breakdown for the selected period for the pie chart
     expense_breakdown_query = db.session.query(
@@ -223,6 +243,22 @@ def dashboard():
 
     pie_chart_labels = json.dumps([item.category for item in expense_breakdown])
     pie_chart_data = json.dumps([item.total for item in expense_breakdown])
+
+    # Income breakdown for the selected period for the pie chart
+    income_breakdown_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).filter(
+        JournalEntry.transaction_type == 'income',
+        JournalEntry.client_id == session['client_id'],
+        JournalEntry.date >= start_date_str,
+        JournalEntry.date <= end_date_str
+    ).group_by(JournalEntry.category)
+
+    income_breakdown = income_breakdown_query.all()
+
+    income_pie_chart_labels = json.dumps([item.category for item in income_breakdown])
+    income_pie_chart_data = json.dumps([item.total for item in income_breakdown])
 
     # KPIs for the selected period
     income_this_period = db.session.query(db.func.sum(JournalEntry.amount)).filter(
@@ -262,12 +298,19 @@ def dashboard():
                            bar_chart_expense=bar_chart_expense,
                            pie_chart_labels=pie_chart_labels,
                            pie_chart_data=pie_chart_data,
+                           income_pie_chart_labels=income_pie_chart_labels,
+                           income_pie_chart_data=income_pie_chart_data,
                            start_date=start_date.strftime('%Y-%m-%d'),
                            end_date=end_date.strftime('%Y-%m-%d'))
 
 @app.route('/')
 def index():
     return redirect(url_for('dashboard'))
+
+@app.route('/category_transactions/<category_name>')
+def category_transactions(category_name):
+    entries = JournalEntry.query.filter_by(category=category_name, client_id=session['client_id']).order_by(JournalEntry.date.desc()).all()
+    return render_template('category_transactions.html', entries=entries, category_name=category_name)
 
 @app.route('/accounts')
 def accounts():
@@ -436,11 +479,27 @@ def bulk_actions():
         else:
             flash('Transaction type not provided.', 'warning')
     elif action == 'apply_rules':
-        rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
-        print(f"DEBUG: Rules loaded for manual application: {[(r.name, r.keyword, r.condition, r.value, r.is_automatic) for r in rules]}")
         entries_to_update = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
+        all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
         updated_count = 0
         for entry in entries_to_update:
+            applicable_rules = []
+            for rule in all_rules:
+                if not rule.accounts:
+                    applicable_rules.append(rule)
+                    continue
+
+                excluded_accounts = {link.account_id for link in rule.accounts if link.is_exclusion}
+                if entry.account_id in excluded_accounts:
+                    continue
+
+                included_accounts = {link.account_id for link in rule.accounts if not link.is_exclusion}
+                if included_accounts and entry.account_id not in included_accounts:
+                    continue
+                
+                applicable_rules.append(rule)
+
+            print(f"DEBUG: Rules loaded for manual application: {[(r.name, r.keyword, r.condition, r.value, r.is_automatic) for r in applicable_rules]}")
             print(f"DEBUG: Processing Entry ID: {entry.id}, Description: '{entry.description}', Amount: {entry.amount}")
             
             # Initialize category and transaction_type for this entry
@@ -448,7 +507,7 @@ def bulk_actions():
             current_transaction_type = entry.transaction_type
 
             # Apply all matching rules
-            for rule in rules:
+            for rule in applicable_rules:
                 # Normalize description and keyword for robust matching
                 normalized_description = ' '.join(entry.description.lower().split())
                 normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
@@ -503,59 +562,65 @@ def bulk_actions():
     
     return redirect(url_for('journal'))
 
-@app.route('/import', methods=['GET', 'POST'])
+@app.route('/import', methods=['GET'])
 def import_page():
-    if request.method == 'POST':
-        name = request.form['name']
-        if ImportTemplate.query.filter_by(name=name, client_id=session['client_id']).first():
-            flash(f'Template "{name}" already exists.', 'danger')
-            return redirect(url_for('import_page'))
-        date_col = col_to_index(request.form['date_col'])
-        description_col = col_to_index(request.form['description_col'])
-        amount_col = col_to_index(request.form.get('amount_col'))
-        debit_col = col_to_index(request.form.get('debit_col'))
-        credit_col = col_to_index(request.form.get('credit_col'))
-        category_col = col_to_index(request.form.get('category_col'))
-        notes_col = col_to_index(request.form.get('notes_col'))
-        has_header = 'has_header' in request.form
+    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    return render_template('import.html', accounts=accounts)
 
-        new_template = ImportTemplate(
-            name=name, date_col=date_col, description_col=description_col, 
-            amount_col=amount_col, debit_col=debit_col, credit_col=credit_col, 
-            category_col=category_col, notes_col=notes_col, has_header=has_header, client_id=session['client_id']
-        )
-        db.session.add(new_template)
-        db.session.commit()
-        flash(f'Template "{name}" created successfully.', 'success')
-        return redirect(url_for('import_page'))
-    else:
-        templates = ImportTemplate.query.filter_by(client_id=session['client_id']).order_by(ImportTemplate.name).all()
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('import.html', templates=templates, accounts=accounts)
+@app.route('/add_template_for_account/<int:account_id>')
+def add_template_for_account(account_id):
+    account = Account.query.get_or_404(account_id)
+    if account.client_id != session['client_id']:
+        return "Unauthorized", 403
+    
+    # Redirect to edit if template already exists
+    if account.import_template:
+        return redirect(url_for('edit_template', template_id=account.import_template.id))
+
+    # Otherwise, create a new blank template and redirect to edit
+    new_template = ImportTemplate(
+        account_id=account_id,
+        date_col=0,
+        description_col=1,
+    )
+    db.session.add(new_template)
+    db.session.commit()
+    return redirect(url_for('edit_template', template_id=new_template.id))
 
 @app.route('/edit_template/<int:template_id>', methods=['GET', 'POST'])
 def edit_template(template_id):
     template = ImportTemplate.query.get_or_404(template_id)
-    if template.client_id != session['client_id']:
+    account = Account.query.get_or_404(template.account_id)
+    if account.client_id != session['client_id']:
         return "Unauthorized", 403
     if request.method == 'POST':
-        name = request.form['name']
-        if ImportTemplate.query.filter(ImportTemplate.name == name, ImportTemplate.id != template_id, ImportTemplate.client_id == session['client_id']).first():
-            flash(f'Template "{name}" already exists.', 'danger')
-            return redirect(url_for('edit_template', template_id=template_id))
-        template.name = name
         template.date_col = col_to_index(request.form['date_col'])
         template.description_col = col_to_index(request.form['description_col'])
         template.amount_col = col_to_index(request.form.get('amount_col'))
         template.debit_col = col_to_index(request.form.get('debit_col'))
         template.credit_col = col_to_index(request.form.get('credit_col'))
         template.category_col = col_to_index(request.form.get('category_col'))
+        template.notes_col = col_to_index(request.form.get('notes_col'))
         template.has_header = 'has_header' in request.form
+        template.negate_amount = 'negate_amount' in request.form
         db.session.commit()
         flash('Template updated successfully.', 'success')
         return redirect(url_for('import_page'))
     else:
-        return render_template('edit_template.html', template=template)
+        template_for_view = {
+            'id': template.id,
+            'account_name': account.name,
+            'date_col': index_to_col(template.date_col),
+            'description_col': index_to_col(template.description_col),
+            'amount_col': index_to_col(template.amount_col),
+            'debit_col': index_to_col(template.debit_col),
+            'credit_col': index_to_col(template.credit_col),
+            'category_col': index_to_col(template.category_col),
+            'notes_col': index_to_col(template.notes_col),
+            'has_header': template.has_header,
+            'negate_amount': template.negate_amount
+        }
+        return render_template('edit_template.html', template=template_for_view)
 
 @app.route('/delete_template/<int:template_id>')
 def delete_template(template_id):
@@ -570,14 +635,31 @@ def delete_template(template_id):
 @app.route('/import_csv', methods=['POST'])
 def import_csv():
     files = request.files.getlist('csv_files')
-    template_id = request.form['template']
     account_id = request.form['account']
 
-    template = ImportTemplate.query.get_or_404(template_id)
-    if template.client_id != session['client_id']:
-        return "Unauthorized", 403
+    template = ImportTemplate.query.filter_by(account_id=account_id).first()
+    if not template:
+        flash('No import template found for the selected account.', 'danger')
+        return redirect(url_for('import_page'))
 
-    rules = Rule.query.filter_by(client_id=session['client_id'], is_automatic=True).order_by(Rule.id).all()
+    all_rules = Rule.query.filter_by(client_id=session['client_id'], is_automatic=True).order_by(Rule.id).all()
+    
+    # Pre-filter rules that could possibly apply
+    applicable_rules = []
+    for rule in all_rules:
+        if not rule.accounts:
+            applicable_rules.append(rule)
+            continue
+
+        excluded_accounts = {link.account_id for link in rule.accounts if link.is_exclusion}
+        if account_id in excluded_accounts:
+            continue
+
+        included_accounts = {link.account_id for link in rule.accounts if not link.is_exclusion}
+        if included_accounts and account_id not in included_accounts:
+            continue
+            
+        applicable_rules.append(rule)
 
     for file in files:
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
@@ -599,12 +681,15 @@ def import_csv():
                     credit = float(row[template.credit_col]) if row[template.credit_col] else 0
                     amount = credit - debit
 
+                if template.negate_amount:
+                    amount = -amount
+
                 # Set defaults
                 category = row[template.category_col] if template.category_col is not None and row[template.category_col] else None
                 transaction_type = 'uncategorized'
 
                 # Apply rules
-                for rule in rules:
+                for rule in applicable_rules:
                     print(f"DEBUG: Checking rule: {{rule.keyword}} | {{rule.condition}} {{rule.value}}")
                     print(f"DEBUG: Transaction Description: {{description}}")
                     print(f"DEBUG: Transaction Amount: {{amount}}")
@@ -713,6 +798,7 @@ def ledger():
 
         ledger_data.append({
             'name': account.name,
+            'type': account.type,
             'opening_balance': opening_balance,
             'debits': abs(debits),
             'credits': credits,
@@ -769,7 +855,7 @@ def export_ledger():
     accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow(['Account', 'Opening Balance', 'Debits', 'Credits', 'Net Change', 'Closing Balance'])
+    cw.writerow(['Account', 'Type', 'Opening Balance', 'Debits', 'Credits', 'Net Change', 'Closing Balance'])
     for account in accounts:
         entries = JournalEntry.query.filter_by(account_id=account.id, client_id=session['client_id']).all()
         opening_balance = 0
@@ -777,7 +863,7 @@ def export_ledger():
         credits = sum(entry.amount for entry in entries if entry.amount > 0)
         net_change = debits + credits
         closing_balance = opening_balance + net_change
-        cw.writerow([account.name, opening_balance, abs(debits), credits, net_change, closing_balance])
+        cw.writerow([account.name, account.type, opening_balance, abs(debits), credits, net_change, closing_balance])
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=ledger.csv"
     output.headers["Content-type"] = "text/csv"
@@ -836,7 +922,8 @@ def rules():
         return redirect(url_for('rules'))
     else:
         rules = Rule.query.filter_by(client_id=session['client_id']).all()
-        return render_template('rules.html', rules=rules)
+        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+        return render_template('rules.html', rules=rules, accounts=accounts)
 
 @app.route('/add_rule', methods=['POST'])
 def add_rule():
@@ -847,6 +934,8 @@ def add_rule():
     category = request.form.get('category')
     transaction_type = request.form.get('transaction_type')
     is_automatic = request.form.get('is_automatic') == 'true'
+    include_accounts = request.form.getlist('include_accounts')
+    exclude_accounts = request.form.getlist('exclude_accounts')
 
     # Basic validation
     if not keyword and not (condition and value_str):
@@ -859,6 +948,17 @@ def add_rule():
 
     value = float(value_str) if value_str else None
 
+    # Use sets for efficient handling of overlaps
+    include_set = set(include_accounts)
+    exclude_set = set(exclude_accounts)
+
+    # Excluded accounts take precedence. An account cannot be in both.
+    conflicting_accounts = include_set.intersection(exclude_set)
+    if conflicting_accounts:
+        conflicting_names = [acc.name for acc in Account.query.filter(Account.id.in_(conflicting_accounts)).all()]
+        flash(f"Accounts cannot be in both include and exclude lists: {', '.join(conflicting_names)}. They have been excluded by default.", 'warning')
+        include_set -= exclude_set
+
     new_rule = Rule(
         name=name,
         keyword=keyword,
@@ -869,6 +969,15 @@ def add_rule():
         is_automatic=is_automatic,
         client_id=session['client_id']
     )
+
+    for account_id in include_set:
+        link = RuleAccountLink(account_id=account_id, is_exclusion=False)
+        new_rule.accounts.append(link)
+
+    for account_id in exclude_set:
+        link = RuleAccountLink(account_id=account_id, is_exclusion=True)
+        new_rule.accounts.append(link)
+
     db.session.add(new_rule)
     db.session.commit()
     flash('Rule created successfully.', 'success')
@@ -897,6 +1006,8 @@ def edit_rule(rule_id):
         rule.category = request.form.get('category')
         rule.transaction_type = request.form.get('transaction_type')
         rule.is_automatic = request.form.get('is_automatic') == 'true'
+        include_accounts = request.form.getlist('include_accounts')
+        exclude_accounts = request.form.getlist('exclude_accounts')
 
         # Basic validation
         if not rule.keyword and not (rule.condition and value_str):
@@ -909,8 +1020,31 @@ def edit_rule(rule_id):
 
         rule.value = float(value_str) if value_str else None
 
+        # Use sets for efficient handling of overlaps
+        include_set = set(include_accounts)
+        exclude_set = set(exclude_accounts)
+
+        # Excluded accounts take precedence. An account cannot be in both.
+        conflicting_accounts = include_set.intersection(exclude_set)
+        if conflicting_accounts:
+            conflicting_names = [acc.name for acc in Account.query.filter(Account.id.in_(conflicting_accounts)).all()]
+            flash(f"Accounts cannot be in both include and exclude lists: {', '.join(conflicting_names)}. They have been excluded by default.", 'warning')
+            include_set -= exclude_set
+
+        # Clear existing account links
+        rule.accounts.clear()
+
+        for account_id in include_set:
+            link = RuleAccountLink(account_id=account_id, is_exclusion=False)
+            rule.accounts.append(link)
+
+        for account_id in exclude_set:
+            link = RuleAccountLink(account_id=account_id, is_exclusion=True)
+            rule.accounts.append(link)
+
         db.session.commit()
         flash('Rule updated successfully.', 'success')
         return redirect(url_for('rules'))
     else:
-        return render_template('edit_rule.html', rule=rule)
+        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+        return render_template('edit_rule.html', rule=rule, accounts=accounts)

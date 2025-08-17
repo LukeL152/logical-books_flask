@@ -8,6 +8,7 @@
         <thead>
             <tr>
                 <th>Account</th>
+                <th>Type</th>
                 <th>Opening Balance</th>
                 <th>Debits</th>
                 <th>Credits</th>
@@ -19,6 +20,7 @@
             {% for account in ledger_data %}
             <tr>
                 <td>{{ account.name }}</td>
+                <td>{{ account.type }}</td>
                 <td>{{ "%.2f"|format(account.opening_balance) }}</td>
                 <td>{{ "%.2f"|format(account.debits) }}</td>
                 <td>{{ "%.2f"|format(account.credits) }}</td>
