@@ -276,8 +276,8 @@ def dashboard():
     ).scalar() or 0
 
     m_income = income_this_period
-    m_expenses = expenses_this_period
-    net_profit = m_income + m_expenses
+    m_expenses = abs(expenses_this_period)
+    net_profit = m_income - m_expenses
 
     # Account summaries (these are not date-filtered in the original, so keep as is)
     asset_accounts = Account.query.filter_by(type='Asset', client_id=session['client_id']).all()
