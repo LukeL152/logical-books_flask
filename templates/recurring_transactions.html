@@ -1,0 +1,59 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Recurring Transactions</h1>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Frequency</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Debit Account</th>
+            <th>Credit Account</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for transaction in recurring_transactions %}
+        <form action="{{ url_for('approve_recurring_transaction') }}" method="post">
+            <input type="hidden" name="name" value="{{ transaction.name }}">
+            <input type="hidden" name="description" value="{{ transaction.description }}">
+            <input type="hidden" name="amount" value="{{ transaction.amount }}">
+            <input type="hidden" name="frequency" value="{{ transaction.frequency }}">
+            <input type="hidden" name="start_date" value="{{ transaction.start_date }}">
+            <input type="hidden" name="end_date" value="{{ transaction.end_date }}">
+            <tr>
+                <td>{{ transaction.name }}</td>
+                <td>{{ transaction.description }}</td>
+                <td>{{ "%.2f"|format(transaction.amount) }}</td>
+                <td>{{ transaction.frequency }}</td>
+                <td>{{ transaction.start_date }}</td>
+                <td>{{ transaction.end_date }}</td>
+                <td>
+                    <select name="debit_account_id" class="form-control">
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="credit_account_id" class="form-control">
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                </td>
+            </tr>
+        </form>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

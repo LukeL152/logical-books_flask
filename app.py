@@ -30,6 +30,46 @@ def scheduled_depreciation():
 def scheduled_reversal():
     reverse_accruals()
 
+@scheduler.task('cron', id='create_recurring_journal_entries', day=1, hour=0)
+def create_recurring_journal_entries():
+    with app.app_context():
+        today = datetime.now()
+        recurring_transactions = RecurringTransaction.query.filter_by(client_id=session['client_id']).all()
+        for transaction in recurring_transactions:
+            # Check if the transaction is due
+            start_date = datetime.strptime(transaction.start_date, '%Y-%m-%d')
+            if transaction.end_date:
+                end_date = datetime.strptime(transaction.end_date, '%Y-%m-%d')
+                if today < start_date or today > end_date:
+                    continue
+            elif today < start_date:
+                continue
+
+            # Check if a journal entry has already been created for the current period
+            last_journal_entry = JournalEntry.query.filter_by(description=transaction.description).order_by(JournalEntry.date.desc()).first()
+            if last_journal_entry:
+                last_journal_entry_date = datetime.strptime(last_journal_entry.date, '%Y-%m-%d')
+                if transaction.frequency == 'monthly' and last_journal_entry_date.year == today.year and last_journal_entry_date.month == today.month:
+                    continue
+                elif transaction.frequency == 'weekly' and last_journal_entry_date.isocalendar()[1] == today.isocalendar()[1]:
+                    continue
+                elif transaction.frequency == 'daily' and last_journal_entry_date.date() == today.date():
+                    continue
+                elif transaction.frequency == 'yearly' and last_journal_entry_date.year == today.year:
+                    continue
+
+            # Create a new journal entry
+            new_entry = JournalEntry(
+                date=today.strftime('%Y-%m-%d'),
+                description=transaction.description,
+                debit_account_id=transaction.debit_account_id,
+                credit_account_id=transaction.credit_account_id,
+                amount=transaction.amount,
+                client_id=session['client_id']
+            )
+            db.session.add(new_entry)
+        db.session.commit()
+
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, unique=True)
@@ -135,6 +175,18 @@ class Sale(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     product = db.relationship('Product', backref='sales')
+
+class RecurringTransaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200))
+    amount = db.Column(db.Float, nullable=False)
+    frequency = db.Column(db.String(20), nullable=False) # daily, weekly, monthly, yearly
+    start_date = db.Column(db.String(10), nullable=False)
+    end_date = db.Column(db.String(10))
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1433,6 +1485,40 @@ def add_accrual():
         return redirect(url_for('accruals'))
     return render_template('add_accrual.html', accounts=accounts)
 
+@app.route('/recurring_transactions')
+def recurring_transactions():
+    recurring_transactions = detect_recurring_transactions()
+    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    return render_template('recurring_transactions.html', recurring_transactions=recurring_transactions, accounts=accounts)
+
+@app.route('/approve_recurring_transaction', methods=['POST'])
+def approve_recurring_transaction():
+    name = request.form['name']
+    description = request.form['description']
+    amount = float(request.form['amount'])
+    frequency = request.form['frequency']
+    start_date = request.form['start_date']
+    end_date = request.form['end_date']
+    debit_account_id = request.form['debit_account_id']
+    credit_account_id = request.form['credit_account_id']
+
+    new_recurring_transaction = RecurringTransaction(
+        name=name,
+        description=description,
+        amount=amount,
+        frequency=frequency,
+        start_date=start_date,
+        end_date=end_date,
+        debit_account_id=debit_account_id,
+        credit_account_id=credit_account_id,
+        client_id=session['client_id']
+    )
+    db.session.add(new_recurring_transaction)
+    db.session.commit()
+
+    flash('Recurring transaction approved successfully.', 'success')
+    return redirect(url_for('recurring_transactions'))
+
 def reverse_accruals():
     with app.app_context():
         today = datetime.now()
@@ -1452,6 +1538,57 @@ def reverse_accruals():
                 db.session.add(new_entry)
                 accrual.is_accrual = False
             db.session.commit()
+
+def detect_recurring_transactions():
+    with app.app_context():
+        # Get all transactions for the current client
+        transactions = Transaction.query.filter_by(client_id=session['client_id']).order_by(Transaction.date.desc()).all()
+
+        # Group transactions by description and amount
+        grouped_transactions = defaultdict(list)
+        for transaction in transactions:
+            grouped_transactions[(transaction.description, transaction.amount)].append(transaction)
+
+        # Find transactions that occur at regular intervals
+        recurring_transactions = []
+        for (description, amount), transaction_group in grouped_transactions.items():
+            if len(transaction_group) > 1:
+                # Sort transactions by date
+                transaction_group.sort(key=lambda x: x.date)
+
+                # Calculate the time difference between transactions
+                time_diffs = []
+                for i in range(len(transaction_group) - 1):
+                    date1 = datetime.strptime(transaction_group[i].date, '%Y-%m-%d')
+                    date2 = datetime.strptime(transaction_group[i+1].date, '%Y-%m-%d')
+                    time_diffs.append((date2 - date1).days)
+
+                # If the time differences are consistent, it's a recurring transaction
+                if len(set(time_diffs)) == 1:
+                    frequency_days = time_diffs[0]
+                    if 28 <= frequency_days <= 31:
+                        frequency = 'monthly'
+                    elif 7 == frequency_days:
+                        frequency = 'weekly'
+                    elif 365 == frequency_days:
+                        frequency = 'yearly'
+                    elif 1 == frequency_days:
+                        frequency = 'daily'
+                    else:
+                        continue
+
+                    recurring_transactions.append({
+                        'name': description,
+                        'description': description,
+                        'amount': amount,
+                        'frequency': frequency,
+                        'start_date': transaction_group[0].date,
+                        'end_date': transaction_group[-1].date,
+                        'debit_account_id': None, # User will select this
+                        'credit_account_id': None # User will select this
+                    })
+
+        return recurring_transactions
 
 @app.route('/fixed_assets')
 def fixed_assets():
