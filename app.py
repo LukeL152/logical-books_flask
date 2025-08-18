@@ -39,6 +39,7 @@ class JournalEntry(db.Model):
     transaction_type = db.Column(db.String(20), nullable=False, default='uncategorized') # uncategorized, income, expense, transfer
     notes = db.Column(db.String(500), nullable=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    locked = db.Column(db.Boolean, nullable=False, default=False)
     account = db.relationship('Account', backref=db.backref('journal_entries', lazy=True))
 
 class ImportTemplate(db.Model):
@@ -236,7 +237,9 @@ def dashboard():
         JournalEntry.transaction_type == 'expense',
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str
+        JournalEntry.date <= end_date_str,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
     ).group_by(JournalEntry.category)
 
     expense_breakdown = expense_breakdown_query.all()
@@ -252,7 +255,9 @@ def dashboard():
         JournalEntry.transaction_type == 'income',
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str
+        JournalEntry.date <= end_date_str,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
     ).group_by(JournalEntry.category)
 
     income_breakdown = income_breakdown_query.all()
@@ -311,6 +316,54 @@ def index():
 def category_transactions(category_name):
     entries = JournalEntry.query.filter_by(category=category_name, client_id=session['client_id']).order_by(JournalEntry.date.desc()).all()
     return render_template('category_transactions.html', entries=entries, category_name=category_name)
+
+@app.route('/full_pie_chart_expenses')
+def full_pie_chart_expenses():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    expense_breakdown_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).filter(
+        JournalEntry.transaction_type == 'expense',
+        JournalEntry.client_id == session['client_id'],
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
+    ).group_by(JournalEntry.category)
+
+    expense_breakdown = expense_breakdown_query.all()
+
+    pie_chart_labels = json.dumps([item.category for item in expense_breakdown])
+    pie_chart_data = json.dumps([item.total for item in expense_breakdown])
+
+    return render_template('full_pie_chart.html', title='Expense Breakdown', labels=pie_chart_labels, data=pie_chart_data)
+
+@app.route('/full_pie_chart_income')
+def full_pie_chart_income():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    income_breakdown_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).filter(
+        JournalEntry.transaction_type == 'income',
+        JournalEntry.client_id == session['client_id'],
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
+    ).group_by(JournalEntry.category)
+
+    income_breakdown = income_breakdown_query.all()
+
+    pie_chart_labels = json.dumps([item.category for item in income_breakdown])
+    pie_chart_data = json.dumps([item.total for item in income_breakdown])
+
+    return render_template('full_pie_chart.html', title='Income Breakdown', labels=pie_chart_labels, data=pie_chart_data)
 
 @app.route('/accounts')
 def accounts():
@@ -451,6 +504,15 @@ def delete_entry(entry_id):
     flash('Journal entry deleted successfully.', 'success')
     return redirect(url_for('journal'))
 
+@app.route('/toggle_lock/<int:entry_id>')
+def toggle_lock(entry_id):
+    entry = JournalEntry.query.get_or_404(entry_id)
+    if entry.client_id != session['client_id']:
+        return "Unauthorized", 403
+    entry.locked = not entry.locked
+    db.session.commit()
+    return redirect(url_for('journal'))
+
 @app.route('/bulk_actions', methods=['POST'])
 def bulk_actions():
     print("--- BULK ACTIONS ROUTE REACHED ---")
@@ -478,8 +540,16 @@ def bulk_actions():
                 flash(f'Error updating entries: {e}', 'danger')
         else:
             flash('Transaction type not provided.', 'warning')
+    elif action == 'lock':
+        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
+        db.session.commit()
+        flash(f'{len(entry_ids)} journal entries locked successfully.', 'success')
+    elif action == 'unlock':
+        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
+        db.session.commit()
+        flash(f'{len(entry_ids)} journal entries unlocked successfully.', 'success')
     elif action == 'apply_rules':
-        entries_to_update = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
+        entries_to_update = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id'], JournalEntry.locked == False).all()
         all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
         updated_count = 0
         for entry in entries_to_update:

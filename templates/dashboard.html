@@ -67,6 +67,9 @@
                 <div class="card-body">
                     <h5 class="card-title">Expense Breakdown</h5>
                     <canvas id="expensePieChart"></canvas>
+                    <div class="text-center mt-2">
+                        <a href="{{ url_for('full_pie_chart_expenses', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -75,6 +78,9 @@
                 <div class="card-body">
                     <h5 class="card-title">Income Breakdown</h5>
                     <canvas id="incomePieChart"></canvas>
+                    <div class="text-center mt-2">
+                        <a href="{{ url_for('full_pie_chart_income', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a>
+                    </div>
                 </div>
             </div>
         </div>
