@@ -1,0 +1,31 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Accruals</h1>
+
+<a href="{{ url_for('add_accrual') }}" class="btn btn-primary mb-3">Add Accrual</a>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Debit Account</th>
+            <th>Credit Account</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in accruals %}
+        <tr>
+            <td>{{ entry.date }}</td>
+            <td>{{ entry.description }}</td>
+            <td>{{ "%.2f"|format(entry.amount) }}</td>
+            <td>{{ entry.debit_account.name }}</td>
+            <td>{{ entry.credit_account.name }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

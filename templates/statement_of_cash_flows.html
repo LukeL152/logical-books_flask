@@ -1,0 +1,127 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Statement of Cash Flows</h1>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Cash Flow from Operating Activities</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td>Net Income</td>
+                            <td>{{ "%.2f"|format(net_income) }}</td>
+                        </tr>
+                        <tr>
+                            <td>Depreciation</td>
+                            <td>{{ "%.2f"|format(depreciation) }}</td>
+                        </tr>
+                        <tr>
+                            <td>(Increase)/Decrease in Accounts Receivable</td>
+                            <td>{{ "%.2f"|format(change_in_accounts_receivable) }}</td>
+                        </tr>
+                        <tr>
+                            <td>(Increase)/Decrease in Inventory</td>
+                            <td>{{ "%.2f"|format(change_in_inventory) }}</td>
+                        </tr>
+                        <tr>
+                            <td>Increase/(Decrease) in Accounts Payable</td>
+                            <td>{{ "%.2f"|format(change_in_accounts_payable) }}</td>
+                        </tr>
+                        <tr class="fw-bold">
+                            <td>Net Cash from Operating Activities</td>
+                            <td>{{ "%.2f"|format(net_cash_from_operating_activities) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Cash Flow from Investing Activities</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td>Purchase of Fixed Assets</td>
+                            <td>{{ "%.2f"|format(purchase_of_fixed_assets) }}</td>
+                        </tr>
+                        <tr class="fw-bold">
+                            <td>Net Cash from Investing Activities</td>
+                            <td>{{ "%.2f"|format(net_cash_from_investing_activities) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Cash Flow from Financing Activities</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td>Issuance of Long-Term Debt</td>
+                            <td>{{ "%.2f"|format(issuance_of_long_term_debt) }}</td>
+                        </tr>
+                        <tr>
+                            <td>Repayment of Long-Term Debt</td>
+                            <td>{{ "%.2f"|format(repayment_of_long_term_debt) }}</td>
+                        </tr>
+                        <tr class="fw-bold">
+                            <td>Net Cash from Financing Activities</td>
+                            <td>{{ "%.2f"|format(net_cash_from_financing_activities) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h4>Summary</h4>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tbody>
+                        <tr class="fw-bold">
+                            <td>Net Increase/(Decrease) in Cash</td>
+                            <td>{{ "%.2f"|format(net_increase_in_cash) }}</td>
+                        </tr>
+                        <tr>
+                            <td>Cash at Beginning of Period</td>
+                            <td>{{ "%.2f"|format(cash_at_beginning_of_period) }}</td>
+                        </tr>
+                        <tr class="fw-bold">
+                            <td>Cash at End of Period</td>
+                            <td>{{ "%.2f"|format(cash_at_end_of_period) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

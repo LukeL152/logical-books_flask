@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_apscheduler import APScheduler
 import csv
 import io
 from datetime import datetime, timedelta
@@ -16,6 +17,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+scheduler = APScheduler()
+scheduler.init_app(app)
+scheduler.start()
+
+# Schedule the depreciation calculation job
+@scheduler.task('cron', id='calculate_depreciation', day=1, hour=0)
+def scheduled_depreciation():
+    calculate_and_record_depreciation()
+
+@scheduler.task('cron', id='reverse_accruals', day=1, hour=0)
+def scheduled_reversal():
+    reverse_accruals()
 
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -24,8 +37,9 @@ class Client(db.Model):
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    type = db.Column(db.String(20), nullable=False)
+    type = db.Column(db.String(50), nullable=False) # Asset, Liability, Equity, Revenue, Expense, Accounts Receivable, Accounts Payable, Inventory, Fixed Asset, Accumulated Depreciation, Long-Term Debt
     opening_balance = db.Column(db.Float, nullable=True, default=0.0)
+    category = db.Column(db.String(100), nullable=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
 class JournalEntry(db.Model):
@@ -33,14 +47,16 @@ class JournalEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.String(10), nullable=False)
     description = db.Column(db.String(200))
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     category = db.Column(db.String(100))
-    transaction_type = db.Column(db.String(20), nullable=False, default='uncategorized') # uncategorized, income, expense, transfer
     notes = db.Column(db.String(500), nullable=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     locked = db.Column(db.Boolean, nullable=False, default=False)
-    account = db.relationship('Account', backref=db.backref('journal_entries', lazy=True))
+    is_accrual = db.Column(db.Boolean, nullable=True, default=False)
+    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
+    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
 
 class ImportTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -79,6 +95,150 @@ class Rule(db.Model):
     is_automatic = db.Column(db.Boolean, nullable=False, default=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     accounts = db.relationship('RuleAccountLink', backref='rule', cascade="all, delete-orphan")
+
+class FixedAsset(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200))
+    purchase_date = db.Column(db.String(10), nullable=False)
+    cost = db.Column(db.Float, nullable=False)
+    useful_life = db.Column(db.Integer, nullable=False) # in years
+    salvage_value = db.Column(db.Float, nullable=False, default=0.0)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Depreciation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    fixed_asset_id = db.Column(db.Integer, db.ForeignKey('fixed_asset.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Product(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200))
+    cost = db.Column(db.Float, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Inventory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quantity = db.Column(db.Integer, nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    product = db.relationship('Product', backref='inventory_item', uselist=False)
+
+class Sale(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    product = db.relationship('Product', backref='sales')
+
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    description = db.Column(db.String(200))
+    amount = db.Column(db.Float, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    is_approved = db.Column(db.Boolean, nullable=False, default=False)
+
+@app.route('/transactions')
+def transactions():
+    transactions = Transaction.query.filter_by(client_id=session['client_id']).order_by(Transaction.date.desc()).all()
+    return render_template('transactions.html', transactions=transactions)
+
+@app.route('/add_transaction', methods=['GET', 'POST'])
+def add_transaction():
+    if request.method == 'POST':
+        date = request.form['date']
+        description = request.form['description']
+        amount = float(request.form['amount'])
+        new_transaction = Transaction(date=date, description=description, amount=amount, client_id=session['client_id'])
+        db.session.add(new_transaction)
+        db.session.commit()
+        flash('Transaction added successfully.', 'success')
+        return redirect(url_for('transactions'))
+    return render_template('add_transaction.html')
+
+@app.route('/edit_transaction/<int:transaction_id>', methods=['GET', 'POST'])
+def edit_transaction(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session['client_id']:
+        return "Unauthorized", 403
+    if request.method == 'POST':
+        transaction.date = request.form['date']
+        transaction.description = request.form['description']
+        transaction.amount = float(request.form['amount'])
+        db.session.commit()
+        flash('Transaction updated successfully.', 'success')
+        return redirect(url_for('transactions'))
+    return render_template('edit_transaction.html', transaction=transaction)
+
+@app.route('/delete_transaction/<int:transaction_id>')
+def delete_transaction(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session['client_id']:
+        return "Unauthorized", 403
+    db.session.delete(transaction)
+    db.session.commit()
+    flash('Transaction deleted successfully.', 'success')
+    return redirect(url_for('transactions'))
+
+@app.route('/unapproved')
+def unapproved_transactions():
+    transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).order_by(Transaction.date.desc()).all()
+    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    return render_template('unapproved_transactions.html', transactions=transactions, accounts=accounts)
+
+class AuditTrail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    action = db.Column(db.String(200), nullable=False)
+    user = db.relationship('Client', backref='audit_trails')
+
+@app.route('/approve_transactions', methods=['POST'])
+def approve_transactions():
+    transaction_ids = request.form.getlist('transaction_ids')
+    for transaction_id in transaction_ids:
+        transaction = Transaction.query.get_or_404(transaction_id)
+        if transaction.client_id != session['client_id']:
+            continue
+
+        debit_account_id = request.form.get(f'debit_account_{transaction_id}')
+        credit_account_id = request.form.get(f'credit_account_{transaction_id}')
+
+        if not debit_account_id or not credit_account_id:
+            flash(f'Debit and credit accounts must be selected for transaction {transaction.id}.', 'danger')
+            continue
+
+        new_entry = JournalEntry(
+            date=transaction.date,
+            description=transaction.description,
+            debit_account_id=debit_account_id,
+            credit_account_id=credit_account_id,
+            amount=transaction.amount,
+            client_id=session['client_id']
+        )
+        db.session.add(new_entry)
+        transaction.is_approved = True
+        log_audit(f'Approved transaction and generated journal entry: {transaction.description}')
+
+    db.session.commit()
+    flash('Selected transactions approved and journal entries created.', 'success')
+    return redirect(url_for('unapproved_transactions'))
+
+@app.route('/audit_trail')
+def audit_trail():
+    logs = AuditTrail.query.filter_by(user_id=session['client_id']).order_by(AuditTrail.date.desc()).all()
+    return render_template('audit_trail.html', logs=logs)
+
+def log_audit(action):
+    if 'client_id' in session:
+        audit_log = AuditTrail(user_id=session['client_id'], action=action)
+        db.session.add(audit_log)
 
 
 def col_to_index(col_name):
@@ -209,20 +369,22 @@ def dashboard():
     # Monthly data for bar chart
     monthly_data_query = db.session.query(
         db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
-        JournalEntry.transaction_type,
+        Account.type,
         db.func.sum(JournalEntry.amount).label('total')
-    ).filter(
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str
-    ).group_by('month', JournalEntry.transaction_type)
+    ).group_by('month', Account.type)
 
     monthly_data = monthly_data_query.all()
 
     bar_chart_data = defaultdict(lambda: {'income': 0, 'expense': 0})
-    for month, trans_type, total in monthly_data:
-        if trans_type in ['income', 'expense']:
-            bar_chart_data[month][trans_type] = total
+    for month, acc_type, total in monthly_data:
+        if acc_type in ['Revenue', 'Income']:
+            bar_chart_data[month]['income'] += total
+        elif acc_type == 'Expense':
+            bar_chart_data[month]['expense'] += total
     
     sorted_months = sorted(bar_chart_data.keys())
     bar_chart_labels = json.dumps(sorted_months)
@@ -233,8 +395,8 @@ def dashboard():
     expense_breakdown_query = db.session.query(
         JournalEntry.category,
         db.func.sum(JournalEntry.amount).label('total')
-    ).filter(
-        JournalEntry.transaction_type == 'expense',
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str,
@@ -251,8 +413,8 @@ def dashboard():
     income_breakdown_query = db.session.query(
         JournalEntry.category,
         db.func.sum(JournalEntry.amount).label('total')
-    ).filter(
-        JournalEntry.transaction_type == 'income',
+    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        Account.type.in_(['Revenue', 'Income']),
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str,
@@ -266,16 +428,16 @@ def dashboard():
     income_pie_chart_data = json.dumps([item.total for item in income_breakdown])
 
     # KPIs for the selected period
-    income_this_period = db.session.query(db.func.sum(JournalEntry.amount)).filter(
+    income_this_period = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(
         JournalEntry.client_id == session['client_id'],
-        JournalEntry.transaction_type == 'income',
+        Account.type.in_(['Revenue', 'Income']),
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str
     ).scalar() or 0
     
-    expenses_this_period = db.session.query(db.func.sum(JournalEntry.amount)).filter(
+    expenses_this_period = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(
         JournalEntry.client_id == session['client_id'],
-        JournalEntry.transaction_type == 'expense',
+        Account.type == 'Expense',
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str
     ).scalar() or 0
@@ -288,8 +450,17 @@ def dashboard():
     asset_accounts = Account.query.filter_by(type='Asset', client_id=session['client_id']).all()
     liability_accounts = Account.query.filter_by(type='Liability', client_id=session['client_id']).all()
 
-    asset_balances = {account.name: sum(entry.amount for entry in account.journal_entries) for account in asset_accounts}
-    liability_balances = {account.name: sum(entry.amount for entry in account.journal_entries) for account in liability_accounts}
+    asset_balances = {}
+    for account in asset_accounts:
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        asset_balances[account.name] = account.opening_balance + credits - debits
+
+    liability_balances = {}
+    for account in liability_accounts:
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        liability_balances[account.name] = account.opening_balance - credits + debits
 
     return render_template('dashboard.html', 
                            m_income=m_income, 
@@ -374,11 +545,12 @@ def accounts():
 def add_account():
     name = request.form['name']
     account_type = request.form['type']
+    category = request.form.get('category')
     opening_balance = float(request.form['opening_balance'])
     if Account.query.filter_by(name=name, client_id=session['client_id']).first():
         flash(f'Account "{name}" already exists.', 'danger')
         return redirect(url_for('accounts'))
-    new_account = Account(name=name, type=account_type, opening_balance=opening_balance, client_id=session['client_id'])
+    new_account = Account(name=name, type=account_type, category=category, opening_balance=opening_balance, client_id=session['client_id'])
     db.session.add(new_account)
     db.session.commit()
     flash(f'Account "{name}" created successfully.', 'success')
@@ -396,6 +568,7 @@ def edit_account(account_id):
             return redirect(url_for('edit_account', account_id=account_id))
         account.name = name
         account.type = request.form['type']
+        account.category = request.form.get('category')
         account.opening_balance = float(request.form['opening_balance'])
         db.session.commit()
         flash('Account updated successfully.', 'success')
@@ -415,7 +588,7 @@ def delete_account(account_id):
 
 @app.route('/journal', methods=['GET', 'POST'])
 def journal():
-    query = JournalEntry.query.join(Account).filter(JournalEntry.client_id == session['client_id'])
+    query = db.session.query(JournalEntry).join(Account, JournalEntry.debit_account_id == Account.id).filter(JournalEntry.client_id == session['client_id'])
 
     # Default to no filters, but retain filter values from form
     filters = {
@@ -446,8 +619,10 @@ def journal():
     direction = request.args.get('direction', 'desc')
 
     sort_column = getattr(JournalEntry, sort_by, JournalEntry.date)
-    if sort_by == 'account':
-        sort_column = Account.name
+    if sort_by == 'debit_account':
+        sort_column = JournalEntry.debit_account.has(Account.name)
+    elif sort_by == 'credit_account':
+        sort_column = JournalEntry.credit_account.has(Account.name)
 
     if direction == 'asc':
         query = query.order_by(sort_column.asc())
@@ -463,14 +638,15 @@ def journal():
 def add_entry():
     date = request.form['date']
     description = request.form['description']
-    account_id = request.form['account']
+    debit_account_id = request.form['debit_account_id']
+    credit_account_id = request.form['credit_account_id']
     amount = request.form['amount']
     category = request.form['category']
-    transaction_type = request.form['transaction_type']
     notes = request.form.get('notes')
-    new_entry = JournalEntry(date=date, description=description, account_id=account_id, amount=amount, category=category, transaction_type=transaction_type, notes=notes, client_id=session['client_id'])
+    new_entry = JournalEntry(date=date, description=description, debit_account_id=debit_account_id, credit_account_id=credit_account_id, amount=amount, category=category, notes=notes, client_id=session['client_id'])
     db.session.add(new_entry)
     db.session.commit()
+    log_audit(f'Added journal entry: {new_entry.description}')
     flash('Journal entry added successfully.', 'success')
     return redirect(url_for('journal'))
 
@@ -482,12 +658,13 @@ def edit_entry(entry_id):
     if request.method == 'POST':
         entry.date = request.form['date']
         entry.description = request.form['description']
-        entry.account_id = request.form['account']
+        entry.debit_account_id = request.form['debit_account_id']
+        entry.credit_account_id = request.form['credit_account_id']
         entry.amount = request.form['amount']
         entry.category = request.form['category']
-        entry.transaction_type = request.form['transaction_type']
         entry.notes = request.form.get('notes')
         db.session.commit()
+        log_audit(f'Edited journal entry: {entry.description}')
         flash('Journal entry updated successfully.', 'success')
         return redirect(url_for('journal'))
     else:
@@ -499,6 +676,7 @@ def delete_entry(entry_id):
     entry = JournalEntry.query.get_or_404(entry_id)
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
+    log_audit(f'Deleted journal entry: {entry.description}')
     db.session.delete(entry)
     db.session.commit()
     flash('Journal entry deleted successfully.', 'success')
@@ -516,70 +694,52 @@ def toggle_lock(entry_id):
 @app.route('/bulk_actions', methods=['POST'])
 def bulk_actions():
     print("--- BULK ACTIONS ROUTE REACHED ---")
-    entry_ids = request.form.getlist('entry_ids')
+    transaction_ids = request.form.getlist('transaction_ids')
     action = request.form['action']
 
-    if not entry_ids:
-        flash('No entries selected.', 'warning')
-        return redirect(url_for('journal'))
+    if not transaction_ids:
+        flash('No transactions selected.', 'warning')
+        return redirect(url_for('transactions'))
 
     if action == 'delete':
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).delete(synchronize_session=False)
+        Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).delete(synchronize_session=False)
         db.session.commit()
-        flash(f'{len(entry_ids)} journal entries deleted successfully.', 'success')
+        flash(f'{len(transaction_ids)} transactions deleted successfully.', 'success')
     elif action == 'update_type':
-        transaction_type = request.form['transaction_type']
-        if transaction_type:
-            entry_ids_int = [int(id) for id in entry_ids]
-            try:
-                JournalEntry.query.filter(JournalEntry.id.in_(entry_ids_int), JournalEntry.client_id == session['client_id']).update({'transaction_type': transaction_type}, synchronize_session=False)
-                db.session.commit()
-                flash(f'{len(entry_ids)} journal entries updated to type "{transaction_type}" successfully.', 'success')
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Error updating entries: {e}', 'danger')
-        else:
-            flash('Transaction type not provided.', 'warning')
+        # This action is no longer directly applicable to Transactions in the same way
+        # as Transactions don't have a 'transaction_type' field directly.
+        # This would need to be re-thought in a full GAAP implementation.
+        flash('Update type action is not applicable to transactions.', 'warning')
     elif action == 'lock':
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
+        Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
         db.session.commit()
-        flash(f'{len(entry_ids)} journal entries locked successfully.', 'success')
+        flash(f'{len(transaction_ids)} transactions locked successfully.', 'success')
     elif action == 'unlock':
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
+        Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
         db.session.commit()
-        flash(f'{len(entry_ids)} journal entries unlocked successfully.', 'success')
+        flash(f'{len(transaction_ids)} transactions unlocked successfully.', 'success')
     elif action == 'apply_rules':
-        entries_to_update = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id'], JournalEntry.locked == False).all()
+        transactions_to_update = Transaction.query.filter(Transaction.id.in_(entry_ids), Transaction.client_id == session['client_id']).all()
         all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
         updated_count = 0
-        for entry in entries_to_update:
+        for transaction in transactions_to_update:
             applicable_rules = []
             for rule in all_rules:
                 if not rule.accounts:
                     applicable_rules.append(rule)
                     continue
 
-                excluded_accounts = {link.account_id for link in rule.accounts if link.is_exclusion}
-                if entry.account_id in excluded_accounts:
-                    continue
-
-                included_accounts = {link.account_id for link in rule.accounts if not link.is_exclusion}
-                if included_accounts and entry.account_id not in included_accounts:
-                    continue
-                
+                # For now, rules are applied to transactions regardless of account
+                # This will be updated when we implement more complex transaction types
                 applicable_rules.append(rule)
 
             print(f"DEBUG: Rules loaded for manual application: {[(r.name, r.keyword, r.condition, r.value, r.is_automatic) for r in applicable_rules]}")
-            print(f"DEBUG: Processing Entry ID: {entry.id}, Description: '{entry.description}', Amount: {entry.amount}")
+            print(f"DEBUG: Processing Transaction ID: {transaction.id}, Description: '{transaction.description}', Amount: {transaction.amount}")
             
-            # Initialize category and transaction_type for this entry
-            current_category = entry.category
-            current_transaction_type = entry.transaction_type
-
             # Apply all matching rules
             for rule in applicable_rules:
                 # Normalize description and keyword for robust matching
-                normalized_description = ' '.join(entry.description.lower().split())
+                normalized_description = ' '.join(transaction.description.lower().split())
                 normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
 
                 print(f"DEBUG: Checking rule: {rule.name} | {rule.keyword} | {rule.condition} {rule.value} (Automatic: {rule.is_automatic})")
@@ -593,11 +753,11 @@ def bulk_actions():
                 
                 condition_match = False
                 if rule.condition and rule.value is not None:
-                    if rule.condition == 'less_than' and entry.amount < rule.value:
+                    if rule.condition == 'less_than' and transaction.amount < rule.value:
                         condition_match = True
-                    elif rule.condition == 'greater_than' and entry.amount > rule.value:
+                    elif rule.condition == 'greater_than' and transaction.amount > rule.value:
                         condition_match = True
-                    elif rule.condition == 'equals' and entry.amount == rule.value:
+                    elif rule.condition == 'equals' and transaction.amount == rule.value:
                         condition_match = True
                 print(f"DEBUG: Condition Match: {condition_match}")
 
@@ -614,21 +774,15 @@ def bulk_actions():
                 print(f"DEBUG: Apply Rule: {apply_rule}")
 
                 if apply_rule:
+                    # For now, we're just updating the transaction's category
+                    # In a real GAAP implementation, rules would influence how journal entries are generated
                     if rule.category:
-                        current_category = rule.category
-                    if rule.transaction_type:
-                        current_transaction_type = rule.transaction_type
-                    print(f"DEBUG: Rule Matched. Current Category: {current_category}, Current Type: {current_transaction_type}")
-            
-            # Update entry only if changes were made
-            if entry.category != current_category or entry.transaction_type != current_transaction_type:
-                entry.category = current_category
-                entry.transaction_type = current_transaction_type
-                updated_count += 1
-                print(f"DEBUG: Entry Updated! Final Category: {entry.category}, Final Type: {entry.transaction_type}")
+                        transaction.category = rule.category
+                    updated_count += 1
+                    print(f"DEBUG: Transaction Updated! Final Category: {transaction.category}")
 
         db.session.commit()
-        flash(f'{updated_count} journal entries updated successfully based on rules.', 'success')
+        flash(f'{updated_count} transactions updated successfully based on rules.', 'success')
     
     return redirect(url_for('journal'))
 
@@ -754,58 +908,10 @@ def import_csv():
                 if template.negate_amount:
                     amount = -amount
 
-                # Set defaults
-                category = row[template.category_col] if template.category_col is not None and row[template.category_col] else None
-                transaction_type = 'uncategorized'
-
-                # Apply rules
-                for rule in applicable_rules:
-                    print(f"DEBUG: Checking rule: {{rule.keyword}} | {{rule.condition}} {{rule.value}}")
-                    print(f"DEBUG: Transaction Description: {{description}}")
-                    print(f"DEBUG: Transaction Amount: {{amount}}")
-
-                    keyword_match = False
-                    if rule.keyword:
-                        keyword_match = rule.keyword.lower() in description.lower()
-                    print(f"DEBUG: Keyword Match: {{keyword_match}}")
-                    
-                    condition_match = False
-                    if rule.condition and rule.value is not None:
-                        if rule.condition == 'less_than' and amount < rule.value:
-                            condition_match = True
-                        elif rule.condition == 'greater_than' and amount > rule.value:
-                            condition_match = True
-                        elif rule.condition == 'equals' and amount == rule.value:
-                            condition_match = True
-                    print(f"DEBUG: Condition Match: {{condition_match}}")
-
-                    # A rule can have a keyword, a condition, or both. 
-                    # If both are present, both must be true.
-                    apply_rule = False
-                    if rule.keyword and (rule.condition and rule.value is not None):
-                        if keyword_match and condition_match:
-                            apply_rule = True
-                    elif rule.keyword:
-                        if keyword_match:
-                            apply_rule = True
-                    elif rule.condition and rule.value is not None:
-                        if condition_match:
-                            apply_rule = True
-                    print(f"DEBUG: Apply Rule: {apply_rule}")
-
-                    if apply_rule:
-                        if rule.category:
-                            category = rule.category
-                        if rule.transaction_type:
-                            transaction_type = rule.transaction_type
-                        print(f"DEBUG: Rule Applied! Category: {{category}}, Type: {{transaction_type}}")
-                        break # Stop after first matching rule
-
-                new_entry = JournalEntry(
-                    date=date, description=description, account_id=account_id, 
-                    amount=amount, category=category, transaction_type=transaction_type, notes=notes, client_id=session['client_id']
+                new_transaction = Transaction(
+                    date=date, description=description, amount=amount, client_id=session['client_id']
                 )
-                db.session.add(new_entry)
+                db.session.add(new_transaction)
             except (ValueError, IndexError) as e:
                 flash(f'Error processing row: {row}. Error: {e}', 'danger')
                 db.session.rollback()
@@ -815,36 +921,7 @@ def import_csv():
     flash(f'{len(files)} file(s) imported successfully.', 'success')
     return redirect(url_for('journal'))
 
-@app.route('/transfer', methods=['GET', 'POST'])
-def transfer():
-    if request.method == 'POST':
-        date = normalize_date(request.form['date'])
-        description = request.form['description']
-        from_account_id = request.form['from_account']
-        to_account_id = request.form['to_account']
-        amount = float(request.form['amount'])
 
-        if from_account_id == to_account_id:
-            flash('From and To accounts cannot be the same.', 'danger')
-            return redirect(url_for('transfer'))
-
-        # Create two journal entries for the transfer
-        from_entry = JournalEntry(
-            date=date, description=description, account_id=from_account_id, 
-            amount=-amount, transaction_type='transfer', client_id=session['client_id']
-        )
-        to_entry = JournalEntry(
-            date=date, description=description, account_id=to_account_id, 
-            amount=amount, transaction_type='transfer', client_id=session['client_id']
-        )
-        db.session.add(from_entry)
-        db.session.add(to_entry)
-        db.session.commit()
-        flash('Transfer recorded successfully.', 'success')
-        return redirect(url_for('journal'))
-    else:
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('transfer.html', accounts=accounts)
 
 @app.route('/ledger')
 def ledger():
@@ -853,13 +930,10 @@ def ledger():
     total_ytd_net_change = 0
 
     for account in accounts:
-        entries = JournalEntry.query.filter_by(account_id=account.id, client_id=session['client_id']).all()
-        
-        opening_balance = account.opening_balance
-        debits = sum(entry.amount for entry in entries if entry.amount < 0)
-        credits = sum(entry.amount for entry in entries if entry.amount > 0)
-        net_change = debits + credits
-        closing_balance = opening_balance + net_change
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        net_change = credits - debits
+        closing_balance = account.opening_balance + net_change
 
         if account.type in ['Asset', 'Expense']:
             total_ytd_net_change += net_change
@@ -869,7 +943,7 @@ def ledger():
         ledger_data.append({
             'name': account.name,
             'type': account.type,
-            'opening_balance': opening_balance,
+            'opening_balance': account.opening_balance,
             'debits': abs(debits),
             'credits': credits,
             'net_change': net_change,
@@ -880,26 +954,132 @@ def ledger():
 
 @app.route('/income_statement')
 def income_statement():
-    income = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry).filter(JournalEntry.transaction_type == 'income', JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
-    expenses = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry).filter(JournalEntry.transaction_type == 'expense', JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
+    revenue = db.session.query(Account.category, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Revenue', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.category).all()
+    expenses = db.session.query(Account.category, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.category).all()
 
-    total_income = sum(i.total for i in income)
+    total_revenue = sum(r.total for r in revenue)
     total_expenses = sum(e.total for e in expenses)
-    net_income = total_income + total_expenses
+    net_income = total_revenue - total_expenses
 
-    return render_template('income_statement.html', income=income, expenses=expenses, total_income=total_income, total_expenses=total_expenses, net_income=net_income)
+    cogs_accounts = Account.query.filter_by(category='COGS', client_id=session['client_id']).all()
+    cogs = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in cogs_accounts]), JournalEntry.is_accrual == False).scalar() or 0
+    gross_profit = total_revenue - cogs
+    gross_profit_margin = (gross_profit / total_revenue) * 100 if total_revenue else 0
+
+    operating_expenses = total_expenses - cogs
+    operating_income = gross_profit - operating_expenses
+    operating_profit_margin = (operating_income / total_revenue) * 100 if total_revenue else 0
+
+    net_profit_margin = (net_income / total_revenue) * 100 if total_revenue else 0
+
+    return render_template('income_statement.html', 
+                           revenue=revenue, 
+                           expenses=expenses, 
+                           total_revenue=total_revenue, 
+                           total_expenses=total_expenses, 
+                           net_income=net_income,
+                           cogs=cogs,
+                           gross_profit=gross_profit,
+                           gross_profit_margin=gross_profit_margin,
+                           operating_expenses=operating_expenses,
+                           operating_income=operating_income,
+                           operating_profit_margin=operating_profit_margin,
+                           net_profit_margin=net_profit_margin
+                           )
 
 @app.route('/balance_sheet')
 def balance_sheet():
-    assets = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry).filter(Account.type == 'Asset', JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
-    liabilities = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry).filter(Account.type == 'Liability', JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
-    equity = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry).filter(Account.type == 'Equity', JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
+    assets = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Asset', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.name).all()
+    liabilities = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Liability', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.name).all()
+    equity = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Equity', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.name).all()
 
     total_assets = sum(a.balance for a in assets)
     total_liabilities = sum(l.balance for l in liabilities)
     total_equity = sum(e.balance for e in equity)
 
-    return render_template('balance_sheet.html', assets=assets, liabilities=liabilities, equity=equity, total_assets=total_assets, total_liabilities=total_liabilities, total_equity=total_equity)
+    current_assets = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(Account.type.in_(['Asset', 'Accounts Receivable', 'Inventory']), JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).scalar() or 0
+    current_liabilities = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(Account.type.in_(['Liability', 'Accounts Payable']), JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).scalar() or 0
+    current_ratio = current_assets / current_liabilities if current_liabilities else 0
+
+    debt_to_equity_ratio = total_liabilities / total_equity if total_equity else 0
+
+    return render_template('balance_sheet.html', 
+                           assets=assets, 
+                           liabilities=liabilities, 
+                           equity=equity, 
+                           total_assets=total_assets, 
+                           total_liabilities=total_liabilities, 
+                           total_equity=total_equity,
+                           current_ratio=current_ratio,
+                           debt_to_equity_ratio=debt_to_equity_ratio
+                           )
+
+@app.route('/statement_of_cash_flows')
+def statement_of_cash_flows():
+    # For simplicity, we'll calculate this for the entire history of the client.
+    # A more advanced implementation would allow for date range filtering.
+
+    # Net Income
+    revenue = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Revenue', JournalEntry.client_id == session['client_id']).scalar() or 0
+    expenses = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == session['client_id']).scalar() or 0
+    net_income = revenue - expenses
+
+    # Depreciation
+    depreciation = 0  # Placeholder
+
+    # Change in Accounts Receivable
+    ar_accounts = Account.query.filter_by(type='Accounts Receivable', client_id=session['client_id']).all()
+    ar_balance = sum(acc.opening_balance for acc in ar_accounts)
+    ar_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
+    ar_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
+    change_in_accounts_receivable = (ar_balance + ar_debits - ar_credits) - ar_balance
+
+    # Change in Inventory
+    inventory_accounts = Account.query.filter_by(type='Inventory', client_id=session['client_id']).all()
+    inventory_balance = sum(acc.opening_balance for acc in inventory_accounts)
+    inventory_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
+    inventory_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
+    change_in_inventory = (inventory_balance + inventory_debits - inventory_credits) - inventory_balance
+
+    # Change in Accounts Payable
+    ap_accounts = Account.query.filter_by(type='Accounts Payable', client_id=session['client_id']).all()
+    ap_balance = sum(acc.opening_balance for acc in ap_accounts)
+    ap_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
+    ap_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
+    change_in_accounts_payable = (ap_balance + ap_credits - ap_debits) - ap_balance
+
+    net_cash_from_operating_activities = net_income + depreciation - change_in_accounts_receivable - change_in_inventory + change_in_accounts_payable
+
+    # Investing Activities
+    purchase_of_fixed_assets = 0 # Placeholder
+    net_cash_from_investing_activities = -purchase_of_fixed_assets
+
+    # Financing Activities
+    issuance_of_long_term_debt = 0 # Placeholder
+    repayment_of_long_term_debt = 0 # Placeholder
+    net_cash_from_financing_activities = issuance_of_long_term_debt - repayment_of_long_term_debt
+
+    # Summary
+    net_increase_in_cash = net_cash_from_operating_activities + net_cash_from_investing_activities + net_cash_from_financing_activities
+    cash_at_beginning_of_period = db.session.query(db.func.sum(Account.opening_balance)).filter(Account.type == 'Asset', Account.name.ilike('%cash%')).scalar() or 0
+    cash_at_end_of_period = cash_at_beginning_of_period + net_increase_in_cash
+
+    return render_template('statement_of_cash_flows.html', 
+                           net_income=net_income,
+                           depreciation=depreciation,
+                           change_in_accounts_receivable=change_in_accounts_receivable,
+                           change_in_inventory=change_in_inventory,
+                           change_in_accounts_payable=change_in_accounts_payable,
+                           net_cash_from_operating_activities=net_cash_from_operating_activities,
+                           purchase_of_fixed_assets=purchase_of_fixed_assets,
+                           net_cash_from_investing_activities=net_cash_from_investing_activities,
+                           issuance_of_long_term_debt=issuance_of_long_term_debt,
+                           repayment_of_long_term_debt=repayment_of_long_term_debt,
+                           net_cash_from_financing_activities=net_cash_from_financing_activities,
+                           net_increase_in_cash=net_increase_in_cash,
+                           cash_at_beginning_of_period=cash_at_beginning_of_period,
+                           cash_at_end_of_period=cash_at_end_of_period
+                           )
 
 @app.route('/budget', methods=['GET', 'POST'])
 def budget():
@@ -927,13 +1107,11 @@ def export_ledger():
     cw = csv.writer(si)
     cw.writerow(['Account', 'Type', 'Opening Balance', 'Debits', 'Credits', 'Net Change', 'Closing Balance'])
     for account in accounts:
-        entries = JournalEntry.query.filter_by(account_id=account.id, client_id=session['client_id']).all()
-        opening_balance = 0
-        debits = sum(entry.amount for entry in entries if entry.amount < 0)
-        credits = sum(entry.amount for entry in entries if entry.amount > 0)
-        net_change = debits + credits
-        closing_balance = opening_balance + net_change
-        cw.writerow([account.name, account.type, opening_balance, abs(debits), credits, net_change, closing_balance])
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        net_change = credits - debits
+        closing_balance = account.opening_balance + net_change
+        cw.writerow([account.name, account.type, account.opening_balance, abs(debits), credits, net_change, closing_balance])
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=ledger.csv"
     output.headers["Content-type"] = "text/csv"
@@ -1118,3 +1296,269 @@ def edit_rule(rule_id):
     else:
         accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
         return render_template('edit_rule.html', rule=rule, accounts=accounts)
+
+@app.route('/products')
+def products():
+    products = Product.query.filter_by(client_id=session['client_id']).order_by(Product.name).all()
+    return render_template('products.html', products=products)
+
+@app.route('/add_product', methods=['GET', 'POST'])
+def add_product():
+    if request.method == 'POST':
+        name = request.form['name']
+        description = request.form['description']
+        cost = float(request.form['cost'])
+
+        new_product = Product(
+            name=name, 
+            description=description, 
+            cost=cost, 
+            client_id=session['client_id']
+        )
+        db.session.add(new_product)
+        db.session.commit()
+
+        # Add product to inventory with initial quantity of 0
+        new_inventory_item = Inventory(
+            quantity=0,
+            product_id=new_product.id,
+            client_id=session['client_id']
+        )
+        db.session.add(new_inventory_item)
+        db.session.commit()
+
+        flash('Product added successfully.', 'success')
+        return redirect(url_for('products'))
+    return render_template('add_product.html')
+
+@app.route('/inventory')
+def inventory():
+    inventory = Inventory.query.filter_by(client_id=session['client_id']).all()
+    return render_template('inventory.html', inventory=inventory)
+
+@app.route('/sales')
+def sales():
+    sales = Sale.query.filter_by(client_id=session['client_id']).order_by(Sale.date.desc()).all()
+    return render_template('sales.html', sales=sales)
+
+@app.route('/add_sale', methods=['GET', 'POST'])
+def add_sale():
+    products = Product.query.filter_by(client_id=session['client_id']).order_by(Product.name).all()
+    if request.method == 'POST':
+        date = request.form['date']
+        product_id = request.form['product_id']
+        quantity = int(request.form['quantity'])
+        price = float(request.form['price'])
+
+        # Check if there is enough inventory
+        inventory_item = Inventory.query.filter_by(product_id=product_id, client_id=session['client_id']).first()
+        if not inventory_item or inventory_item.quantity < quantity:
+            flash('Not enough inventory for this sale.', 'danger')
+            return render_template('add_sale.html', products=products)
+
+        # Create the sale
+        new_sale = Sale(
+            date=date,
+            product_id=product_id,
+            quantity=quantity,
+            price=price,
+            client_id=session['client_id']
+        )
+        db.session.add(new_sale)
+
+        # Update inventory
+        inventory_item.quantity -= quantity
+
+        # Create journal entries for the sale
+        cogs_account = Account.query.filter_by(category='COGS', client_id=session['client_id']).first()
+        sales_revenue_account = Account.query.filter_by(type='Revenue', client_id=session['client_id']).first()
+        inventory_account = Account.query.filter_by(type='Inventory', client_id=session['client_id']).first()
+        cash_account = Account.query.filter_by(type='Asset', name='Cash', client_id=session['client_id']).first()
+
+        if cogs_account and sales_revenue_account and inventory_account and cash_account:
+            # 1. Record the sale
+            db.session.add(JournalEntry(
+                date=date,
+                description=f"Sale of {quantity} {new_sale.product.name}",
+                debit_account_id=cash_account.id,
+                credit_account_id=sales_revenue_account.id,
+                amount=price * quantity,
+                client_id=session['client_id']
+            ))
+
+            # 2. Record the cost of goods sold
+            db.session.add(JournalEntry(
+                date=date,
+                description=f"COGS for sale of {quantity} {new_sale.product.name}",
+                debit_account_id=cogs_account.id,
+                credit_account_id=inventory_account.id,
+                amount=new_sale.product.cost * quantity,
+                client_id=session['client_id']
+            ))
+
+        db.session.commit()
+        flash('Sale recorded successfully.', 'success')
+        return redirect(url_for('sales'))
+
+    return render_template('add_sale.html', products=products)
+
+@app.route('/accruals')
+def accruals():
+    accruals = JournalEntry.query.filter_by(client_id=session['client_id'], is_accrual=True).order_by(JournalEntry.date.desc()).all()
+    return render_template('accruals.html', accruals=accruals)
+
+@app.route('/add_accrual', methods=['GET', 'POST'])
+def add_accrual():
+    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    if request.method == 'POST':
+        date = request.form['date']
+        description = request.form['description']
+        amount = float(request.form['amount'])
+        debit_account_id = request.form['debit_account_id']
+        credit_account_id = request.form['credit_account_id']
+
+        new_entry = JournalEntry(
+            date=date,
+            description=description,
+            debit_account_id=debit_account_id,
+            credit_account_id=credit_account_id,
+            amount=amount,
+            is_accrual=True,
+            client_id=session['client_id']
+        )
+        db.session.add(new_entry)
+        db.session.commit()
+
+        flash('Accrual added successfully.', 'success')
+        return redirect(url_for('accruals'))
+    return render_template('add_accrual.html', accounts=accounts)
+
+def reverse_accruals():
+    with app.app_context():
+        today = datetime.now()
+        if today.day == 1:
+            accruals_to_reverse = JournalEntry.query.filter_by(client_id=session['client_id'], is_accrual=True).all()
+            for accrual in accruals_to_reverse:
+                # Create a reversing entry
+                new_entry = JournalEntry(
+                    date=today.strftime('%Y-%m-%d'),
+                    description=f"Reversal of: {accrual.description}",
+                    debit_account_id=accrual.credit_account_id,
+                    credit_account_id=accrual.debit_account_id,
+                    amount=accrual.amount,
+                    is_accrual=False,
+                    client_id=session['client_id']
+                )
+                db.session.add(new_entry)
+                accrual.is_accrual = False
+            db.session.commit()
+
+@app.route('/fixed_assets')
+def fixed_assets():
+    assets = FixedAsset.query.filter_by(client_id=session['client_id']).order_by(FixedAsset.purchase_date.desc()).all()
+    return render_template('fixed_assets.html', assets=assets)
+
+@app.route('/add_fixed_asset', methods=['GET', 'POST'])
+def add_fixed_asset():
+    if request.method == 'POST':
+        name = request.form['name']
+        description = request.form['description']
+        purchase_date = request.form['purchase_date']
+        cost = float(request.form['cost'])
+        useful_life = int(request.form['useful_life'])
+        salvage_value = float(request.form['salvage_value'])
+
+        new_asset = FixedAsset(
+            name=name, 
+            description=description, 
+            purchase_date=purchase_date, 
+            cost=cost, 
+            useful_life=useful_life, 
+            salvage_value=salvage_value, 
+            client_id=session['client_id']
+        )
+        db.session.add(new_asset)
+        db.session.commit()
+
+        # Create a journal entry for the purchase of the fixed asset
+        fixed_asset_account = Account.query.filter_by(type='Fixed Asset', client_id=session['client_id']).first()
+        cash_account = Account.query.filter_by(type='Asset', name='Cash', client_id=session['client_id']).first()
+        if fixed_asset_account and cash_account:
+            new_entry = JournalEntry(
+                date=purchase_date,
+                description=f"Purchase of {name}",
+                debit_account_id=fixed_asset_account.id,
+                credit_account_id=cash_account.id,
+                amount=cost,
+                client_id=session['client_id']
+            )
+            db.session.add(new_entry)
+            db.session.commit()
+
+        flash('Fixed asset added successfully.', 'success')
+        return redirect(url_for('fixed_assets'))
+    return render_template('add_fixed_asset.html')
+
+@app.route('/depreciation_schedule/<int:asset_id>')
+def depreciation_schedule(asset_id):
+    asset = FixedAsset.query.get_or_404(asset_id)
+    if asset.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    depreciation_entries = Depreciation.query.filter_by(fixed_asset_id=asset.id).order_by(Depreciation.date).all()
+    schedule = []
+    accumulated_depreciation = 0
+    book_value = asset.cost
+
+    for entry in depreciation_entries:
+        accumulated_depreciation += entry.amount
+        book_value -= entry.amount
+        schedule.append({
+            'date': entry.date,
+            'amount': entry.amount,
+            'accumulated_depreciation': accumulated_depreciation,
+            'book_value': book_value
+        })
+
+    return render_template('depreciation_schedule.html', asset=asset, schedule=schedule)
+
+def calculate_and_record_depreciation():
+    with app.app_context():
+        today = datetime.now()
+        assets = FixedAsset.query.filter_by(client_id=session['client_id']).all()
+        for asset in assets:
+            # Calculate monthly depreciation
+            monthly_depreciation = (asset.cost - asset.salvage_value) / (asset.useful_life * 12)
+            
+            # Check if depreciation has already been recorded for the current month
+            last_depreciation = Depreciation.query.filter_by(fixed_asset_id=asset.id).order_by(Depreciation.date.desc()).first()
+            if last_depreciation:
+                last_depreciation_date = datetime.strptime(last_depreciation.date, '%Y-%m-%d')
+                if last_depreciation_date.year == today.year and last_depreciation_date.month == today.month:
+                    continue
+
+            # Record depreciation for the current month
+            new_depreciation = Depreciation(
+                date=today.strftime('%Y-%m-%d'),
+                amount=monthly_depreciation,
+                fixed_asset_id=asset.id,
+                client_id=session['client_id']
+            )
+            db.session.add(new_depreciation)
+
+            # Create journal entry for depreciation
+            depreciation_expense_account = Account.query.filter_by(type='Expense', category='Depreciation', client_id=session['client_id']).first()
+            accumulated_depreciation_account = Account.query.filter_by(type='Accumulated Depreciation', client_id=session['client_id']).first()
+
+            if depreciation_expense_account and accumulated_depreciation_account:
+                new_entry = JournalEntry(
+                    date=today.strftime('%Y-%m-%d'),
+                    description=f"Depreciation for {asset.name}",
+                    debit_account_id=depreciation_expense_account.id,
+                    credit_account_id=accumulated_depreciation_account.id,
+                    amount=monthly_depreciation,
+                    client_id=session['client_id']
+                )
+                db.session.add(new_entry)
+
+        db.session.commit()

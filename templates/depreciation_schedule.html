@@ -1,0 +1,33 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Depreciation Schedule for {{ asset.name }}</h1>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Depreciation Expense</th>
+            <th>Accumulated Depreciation</th>
+            <th>Book Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>{{ asset.purchase_date }}</td>
+            <td></td>
+            <td></td>
+            <td>{{ "%.2f"|format(asset.cost) }}</td>
+        </tr>
+        {% for entry in schedule %}
+        <tr>
+            <td>{{ entry.date }}</td>
+            <td>{{ "%.2f"|format(entry.amount) }}</td>
+            <td>{{ "%.2f"|format(entry.accumulated_depreciation) }}</td>
+            <td>{{ "%.2f"|format(entry.book_value) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

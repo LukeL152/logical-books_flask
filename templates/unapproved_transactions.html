@@ -1,0 +1,48 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Unapproved Transactions</h1>
+
+<form action="{{ url_for('approve_transactions') }}" method="post">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Debit Account</th>
+                <th>Credit Account</th>
+                <th>Select</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for transaction in transactions %}
+            <tr>
+                <td>{{ transaction.date }}</td>
+                <td>{{ transaction.description }}</td>
+                <td>{{ "%.2f"|format(transaction.amount) }}</td>
+                <td>
+                    <select name="debit_account_{{ transaction.id }}" class="form-control">
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <select name="credit_account_{{ transaction.id }}" class="form-control">
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <input type="checkbox" name="transaction_ids" value="{{ transaction.id }}">
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary">Approve Selected Transactions</button>
+</form>
+{% endblock %}

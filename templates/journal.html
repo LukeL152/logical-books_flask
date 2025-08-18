@@ -69,10 +69,10 @@
                     <th><input type="checkbox" id="select-all"></th>
                     <th><a href="{{ url_for('journal', sort='date', direction='desc' if request.args.get('sort') == 'date' and request.args.get('direction') == 'asc' else 'asc') }}">Date</a></th>
                     <th><a href="{{ url_for('journal', sort='description', direction='desc' if request.args.get('sort') == 'description' and request.args.get('direction') == 'asc' else 'asc') }}">Description</a></th>
-                    <th><a href="{{ url_for('journal', sort='account', direction='desc' if request.args.get('sort') == 'account' and request.args.get('direction') == 'asc' else 'asc') }}">Account</a></th>
+                    <th><a href="{{ url_for('journal', sort='debit_account', direction='desc' if request.args.get('sort') == 'debit_account' and request.args.get('direction') == 'asc' else 'asc') }}">Debit Account</a></th>
+                    <th><a href="{{ url_for('journal', sort='credit_account', direction='desc' if request.args.get('sort') == 'credit_account' and request.args.get('direction') == 'asc' else 'asc') }}">Credit Account</a></th>
                     <th><a href="{{ url_for('journal', sort='amount', direction='desc' if request.args.get('sort') == 'amount' and request.args.get('direction') == 'asc' else 'asc') }}">Amount</a></th>
                     <th><a href="{{ url_for('journal', sort='category', direction='desc' if request.args.get('sort') == 'category' and request.args.get('direction') == 'asc' else 'asc') }}">Category</a></th>
-                    <th><a href="{{ url_for('journal', sort='transaction_type', direction='desc' if request.args.get('sort') == 'transaction_type' and request.args.get('direction') == 'asc' else 'asc') }}">Type</a></th>
                     <th><a href="{{ url_for('journal', sort='notes', direction='desc' if request.args.get('sort') == 'notes' and request.args.get('direction') == 'asc' else 'asc') }}">Notes</a></th>
                     <th>Actions</th>
                 </tr>
@@ -83,10 +83,10 @@
                     <td><input type="checkbox" name="entry_ids" value="{{ entry.id }}" class="form-check-input"></td>
                     <td>{{ entry.date }}</td>
                     <td>{{ entry.description }}</td>
-                    <td>{{ entry.account.name }}</td>
+                    <td>{{ entry.debit_account.name }}</td>
+                    <td>{{ entry.credit_account.name }}</td>
                     <td>{{ entry.amount }}</td>
                     <td>{{ entry.category }}</td>
-                    <td>{{ entry.transaction_type }}</td>
                     <td>{{ entry.notes or '' }}</td>
                     <td>
                         <a href="{{ url_for('edit_entry', entry_id=entry.id) }}" class="btn btn-sm btn-primary">Edit</a>
@@ -117,8 +117,16 @@
                 <input type="text" id="description" name="description" class="form-control" required>
             </div>
             <div class="col-md-2">
-                <label for="account" class="form-label">Account:</label>
-                <select id="account" name="account" class="form-select" required>
+                <label for="debit_account_id" class="form-label">Debit Account:</label>
+                <select id="debit_account_id" name="debit_account_id" class="form-select" required>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}">{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="credit_account_id" class="form-label">Credit Account:</label>
+                <select id="credit_account_id" name="credit_account_id" class="form-select" required>
                     {% for account in accounts %}
                     <option value="{{ account.id }}">{{ account.name }}</option>
                     {% endfor %}
@@ -131,14 +139,6 @@
             <div class="col-md-2">
                 <label for="category" class="form-label">Category:</label>
                 <input type="text" id="category" name="category" class="form-control">
-            </div>
-            <div class="col-md-2">
-                <label for="transaction_type" class="form-label">Type:</label>
-                <select id="transaction_type" name="transaction_type" class="form-select" required>
-                    <option value="uncategorized">Uncategorized</option>
-                    <option value="income">Income</option>
-                    <option value="expense">Expense</option>
-                </select>
             </div>
             <div class="col-md-4">
                 <label for="notes" class="form-label">Notes:</label>

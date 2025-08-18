@@ -81,4 +81,21 @@
             </table>
         </div>
     </div>
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <h2 class="h4">Key Ratios</h2>
+            <table class="table table-striped">
+                <tbody>
+                    <tr>
+                        <td>Current Ratio</td>
+                        <td class="text-end">{{ "%.2f"|format(current_ratio) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Debt-to-Equity Ratio</td>
+                        <td class="text-end">{{ "%.2f"|format(debt_to_equity_ratio) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 {% endblock %}

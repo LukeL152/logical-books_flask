@@ -12,10 +12,18 @@
                 <input type="text" id="description" name="description" class="form-control" value="{{ entry.description }}" required>
             </div>
             <div class="col-md-2">
-                <label for="account" class="form-label">Account:</label>
-                <select id="account" name="account" class="form-select" required>
+                <label for="debit_account_id" class="form-label">Debit Account:</label>
+                <select id="debit_account_id" name="debit_account_id" class="form-select" required>
                     {% for account in accounts %}
-                    <option value="{{ account.id }}" {% if account.id == entry.account_id %}selected{% endif %}>{{ account.name }}</option>
+                    <option value="{{ account.id }}" {% if account.id == entry.debit_account_id %}selected{% endif %}>{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="credit_account_id" class="form-label">Credit Account:</label>
+                <select id="credit_account_id" name="credit_account_id" class="form-select" required>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}" {% if account.id == entry.credit_account_id %}selected{% endif %}>{{ account.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -26,14 +34,6 @@
             <div class="col-md-2">
                 <label for="category" class="form-label">Category:</label>
                 <input type="text" id="category" name="category" class="form-control" value="{{ entry.category }}">
-            </div>
-            <div class="col-md-2">
-                <label for="transaction_type" class="form-label">Type:</label>
-                <select id="transaction_type" name="transaction_type" class="form-select" required>
-                    <option value="uncategorized" {% if entry.transaction_type == 'uncategorized' %}selected{% endif %}>Uncategorized</option>
-                    <option value="income" {% if entry.transaction_type == 'income' %}selected{% endif %}>Income</option>
-                    <option value="expense" {% if entry.transaction_type == 'expense' %}selected{% endif %}>Expense</option>
-                </select>
             </div>
             <div class="col-md-4">
                 <label for="notes" class="form-label">Notes:</label>

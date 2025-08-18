@@ -1,0 +1,35 @@
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Fixed Assets</h1>
+
+<a href="{{ url_for('add_fixed_asset') }}" class="btn btn-primary mb-3">Add Fixed Asset</a>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Purchase Date</th>
+            <th>Cost</th>
+            <th>Useful Life (Years)</th>
+            <th>Salvage Value</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for asset in assets %}
+        <tr>
+            <td>{{ asset.name }}</td>
+            <td>{{ asset.purchase_date }}</td>
+            <td>{{ "%.2f"|format(asset.cost) }}</td>
+            <td>{{ asset.useful_life }}</td>
+            <td>{{ "%.2f"|format(asset.salvage_value) }}</td>
+            <td>
+                <a href="{{ url_for('depreciation_schedule', asset_id=asset.id) }}" class="btn btn-sm btn-info">Depreciation Schedule</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
