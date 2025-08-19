@@ -20,3 +20,4 @@ instance/
 # Gemini CLI
 GEMINI.md
 .gemini/
+/backups
