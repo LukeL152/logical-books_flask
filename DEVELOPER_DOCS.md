@@ -1,7 +1,5 @@
 # Developer Documentation: Logical Books
 
-**IMPORTANT NOTE:** Development on this Flask application has ceased. A new version is currently under development using Node.js, React, and PostgreSQL.
-
 This document provides an in-depth look into the architecture, technologies, and future roadmap for the Logical Books application, aiming to transform it into a production-ready bookkeeping solution.
 
 ## 1. Project Overview and Functionality
@@ -72,6 +70,7 @@ The project leverages a set of established and widely-used technologies:
 *   **Dependency Management:** Pip
 *   **Virtual Environment:** `venv`
 *   **Frontend:** HTML5, CSS3 (with `static/style.css`)
+*   **Scheduler:** APScheduler
 
 ## 3. Roadmap to a Production-Ready Bookkeeping Website
 
@@ -115,6 +114,9 @@ Transforming Logical Books into a robust, scalable, and secure production-grade 
 *   **Invoice/Billing Management:**
     *   **Action:** Add functionality for creating, sending, and tracking invoices and bills.
     *   **Reason:** Expand core bookkeeping features.
+*   **Recurring Transactions:**
+    *   **Action:** Automatically detect and manage recurring transactions.
+    *   **Reason:** Automate the process of creating journal entries for recurring transactions.
 
 ### Phase 3: Deployment, Security Hardening & Operations
 

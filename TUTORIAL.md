@@ -155,3 +155,13 @@ You can export the following data to a CSV file:
 *   Balance Sheet
 
 To export data, click on the "Export to CSV" button on the corresponding page.
+
+## 11. Recurring Transactions
+
+### Detecting Recurring Transactions
+
+Logical Books can automatically detect recurring transactions by analyzing your transaction history for patterns in description and amount at regular intervals. To view the detected recurring transactions, click on the "Recurring Transactions" link in the "Journal" dropdown menu.
+
+### Approving Recurring Transactions
+
+Once a recurring transaction has been detected, you can approve it by selecting a debit and credit account and clicking the "Approve" button. Once approved, a new `RecurringTransaction` record will be created, and a journal entry will be automatically created for the transaction on a daily, weekly, monthly, or yearly basis.

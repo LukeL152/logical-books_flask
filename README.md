@@ -5,6 +5,8 @@
 
 Logical Books is a simple, self-hosted bookkeeping application designed for personal or small business use. It provides core accounting features in a straightforward web interface, allowing you to manage your finances with ease. The application is built with a Python Flask backend and a modern, responsive frontend powered by Bootstrap.
 
+For a detailed guide on how to use the application, please see the [TUTORIAL.md](TUTORIAL.md) file.
+
 ## Features
 
 *   **Multi-Client Support:** Manage finances for multiple, separate entities. Each client has its own chart of accounts, journal entries, and import templates.
@@ -16,7 +18,12 @@ Logical Books is a simple, self-hosted bookkeeping application designed for pers
 *   **General Ledger:** View a summary of each account's activity, including opening and closing balances, debits, credits, and the year-to-date net change.
 *   **Income Statement:** Generate a simple profit and loss report showing total income, total expenses, and net income.
 *   **Balance Sheet:** View a snapshot of your financial position with a report on your assets, liabilities, and equity.
+*   **Statement of Cash Flows:** Shows how cash is moving in and out of the business.
 *   **Budgeting:** Set monthly budgets for different expense categories and track your spending against them.
+*   **Fixed Asset Management:** Track fixed assets and automatically calculate and record depreciation.
+*   **Inventory Management:** Track inventory levels and automatically create journal entries for sales and cost of goods sold.
+*   **Accrual Accounting:** Create and manage accruals with automatic reversing entries.
+*   **Recurring Transactions:** Automatically detect and manage recurring transactions.
 *   **Database Migrations:** Your data is safe! The application uses Flask-Migrate to manage database schema changes without deleting your data.
 
 ## How it Works
@@ -100,5 +107,10 @@ After the script completes successfully, your application should be accessible v
 
 ## Future Improvements
 
-*   **User Authentication:** Add user accounts and authentication to secure the application.
-*   **Recurring Transactions:** Add the ability to create recurring journal entries.
+*   **Multi-Currency Support:** Manage accounts and transactions in multiple currencies.
+*   **Budgeting vs. Actuals Reporting:** Enhanced reporting on budget vs. actuals with variance analysis.
+*   **User Roles and Permissions:** Control access to different parts of the application.
+*   **Attachments:** Attach files, such as receipts and invoices, to journal entries and transactions.
+*   **Financial Projections:** Create financial projections based on historical data and user-defined assumptions.
+*   **Integration with Payment Gateways:** Automatically import transaction data from payment gateways like Stripe and PayPal.
+*   **Mobile App:** A mobile app for iOS and Android to access financial data on the go.
