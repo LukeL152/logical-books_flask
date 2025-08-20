@@ -13,7 +13,7 @@ APP_NAME="logical-books" # Used for systemd service and nginx config
 # --- 1. Install System Dependencies ---
 echo "Updating apt and installing system dependencies..."
 sudo apt update
-sudo apt install -y python3 python3-venv git build-essential nginx
+sudo apt install -y python3 python3-venv git build-essential
 
 echo "System dependencies installed."
 
@@ -90,33 +90,13 @@ WantedBy=multi-user.target
 EOF"
 echo "Gunicorn Systemd service file created."
 
-# --- 7. Create Nginx Configuration ---
-echo "Creating Nginx configuration file..."
-sudo bash -c "cat > /etc/nginx/sites-available/$APP_NAME <<EOF
-server {
-    listen 80;
-    server_name _; # Replace with your domain name or EC2 public IP if you have one
 
-    location /static {
-        alias $APP_DIR/static;
-    }
-
-    location / {
-        include proxy_params;
-        proxy_pass http://unix:$APP_DIR/$APP_NAME.sock;
-    }
-}
-EOF"
-echo "Nginx configuration file created."
 
 # --- 8. Enable and Start Services ---
 echo "Enabling and starting services..."
-sudo ln -sf /etc/nginx/sites-available/$APP_NAME /etc/nginx/sites-enabled/
-sudo nginx -t # Test Nginx configuration
 sudo systemctl daemon-reload
 sudo systemctl start $APP_NAME
 sudo systemctl enable $APP_NAME
-sudo systemctl restart nginx
 echo "Services enabled and started."
 
 echo "Deployment complete! Your application should be accessible via your EC2 instance's public IP address."
