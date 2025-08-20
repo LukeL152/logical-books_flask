@@ -80,7 +80,7 @@ WorkingDirectory=$APP_DIR
 Environment=\"PATH=$VENV_DIR/bin\"
 Environment=\"FLASK_ENV=production\"
 Environment=\"SECRET_KEY=$SECRET_KEY\"
-ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$APP_DIR/$APP_NAME.sock -m 007 wsgi:app
+ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind 0.0.0.0:8000 wsgi:app
 ExecReload=/bin/kill -s HUP \$MAINPID
 KillMode=mixed
 Restart=on-failure
