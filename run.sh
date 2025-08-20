@@ -15,5 +15,5 @@ echo "Upgrading database..."
 ./venv/bin/python3 -m flask db upgrade
 
 # Start the Flask application
-echo "Starting Flask application..."
-./venv/bin/python3 -m flask run
+echo "Starting Flask application with Gunicorn on port 8000..."
+./venv/bin/python3 -m gunicorn --bind 0.0.0.0:8000 wsgi:app
