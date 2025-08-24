@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import json
 import markdown
+from models import Client, Account, JournalEntry, ImportTemplate, Budget, Rule, RuleAccountLink, FixedAsset, Depreciation, Product, Inventory, Sale, RecurringTransaction, Transaction, AuditTrail, CategoryRule
 
 import os
 
@@ -24,7 +25,8 @@ app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real applicatio
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'bookkeeping.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+from database import db
+db.init_app(app)
 migrate = Migrate(app, db)
 scheduler = APScheduler()
 scheduler.init_app(app)
@@ -79,143 +81,31 @@ def create_recurring_journal_entries():
             db.session.add(new_entry)
         db.session.commit()
 
-class Client(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    contact_name = db.Column(db.String(100), nullable=False)
-    business_name = db.Column(db.String(100), unique=True)
-    contact_email = db.Column(db.String(120))
-    contact_phone = db.Column(db.String(20))
-    address = db.Column(db.Text)
-    entity_structure = db.Column(db.String(50))
-    services_offered = db.Column(db.Text)
-    payment_method = db.Column(db.String(50))
-    billing_cycle = db.Column(db.String(50))
-    client_status = db.Column(db.String(20), default='Active')
-    notes = db.Column(db.Text)
 
-class Account(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    type = db.Column(db.String(50), nullable=False) # Asset, Liability, Equity, Revenue, Expense, Accounts Receivable, Accounts Payable, Inventory, Fixed Asset, Accumulated Depreciation, Long-Term Debt
-    opening_balance = db.Column(db.Float, nullable=True, default=0.0)
-    category = db.Column(db.String(100), nullable=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    parent_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
 
-class JournalEntry(db.Model):
-    __tablename__ = 'journal_entries'
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
-    description = db.Column(db.String(200))
-    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
-    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    category = db.Column(db.String(100))
-    notes = db.Column(db.String(500), nullable=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    locked = db.Column(db.Boolean, nullable=False, default=False)
-    is_accrual = db.Column(db.Boolean, nullable=True, default=False)
-    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
-    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
 
-class ImportTemplate(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False, unique=True)
-    date_col = db.Column(db.Integer, nullable=False)
-    description_col = db.Column(db.Integer, nullable=False)
-    amount_col = db.Column(db.Integer)
-    debit_col = db.Column(db.Integer)
-    credit_col = db.Column(db.Integer)
-    category_col = db.Column(db.Integer)
-    notes_col = db.Column(db.Integer)
-    has_header = db.Column(db.Boolean, nullable=False, default=False)
-    negate_amount = db.Column(db.Boolean, nullable=False, default=False)
-    account = db.relationship('Account', backref=db.backref('import_template', uselist=False, cascade="all, delete-orphan"))
 
-class Budget(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    category = db.Column(db.String(100), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class RuleAccountLink(db.Model):
-    __tablename__ = 'rule_account_link'
-    rule_id = db.Column(db.Integer, db.ForeignKey('rule.id'), primary_key=True)
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), primary_key=True)
-    is_exclusion = db.Column(db.Boolean, nullable=False, default=False)
 
-class Rule(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=True)
-    keyword = db.Column(db.String(100), nullable=True)
-    condition = db.Column(db.String(20), nullable=True)
-    value = db.Column(db.Float, nullable=True)
-    category = db.Column(db.String(100), nullable=True)
-    transaction_type = db.Column(db.String(20), nullable=True)
-    is_automatic = db.Column(db.Boolean, nullable=False, default=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    accounts = db.relationship('RuleAccountLink', backref='rule', cascade="all, delete-orphan")
 
-class FixedAsset(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(200))
-    purchase_date = db.Column(db.String(10), nullable=False)
-    cost = db.Column(db.Float, nullable=False)
-    useful_life = db.Column(db.Integer, nullable=False) # in years
-    salvage_value = db.Column(db.Float, nullable=False, default=0.0)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class Depreciation(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    fixed_asset_id = db.Column(db.Integer, db.ForeignKey('fixed_asset.id'), nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class Product(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(200))
-    cost = db.Column(db.Float, nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class Inventory(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    quantity = db.Column(db.Integer, nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    product = db.relationship('Product', backref='inventory_item', uselist=False)
 
-class Sale(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
-    price = db.Column(db.Float, nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    product = db.relationship('Product', backref='sales')
 
-class RecurringTransaction(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(200))
-    amount = db.Column(db.Float, nullable=False)
-    frequency = db.Column(db.String(20), nullable=False) # daily, weekly, monthly, yearly
-    start_date = db.Column(db.String(10), nullable=False)
-    end_date = db.Column(db.String(10))
-    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
-    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class Transaction(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
-    description = db.Column(db.String(200))
-    amount = db.Column(db.Float, nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    is_approved = db.Column(db.Boolean, nullable=False, default=False)
+
+
+
+
+
+
+
+
+
+
+
+
 
 @app.route('/transactions')
 def transactions():
@@ -265,12 +155,7 @@ def unapproved_transactions():
     accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
     return render_template('unapproved_transactions.html', transactions=transactions, accounts=accounts)
 
-class AuditTrail(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    action = db.Column(db.String(200), nullable=False)
-    user = db.relationship('Client', backref='audit_trails')
+
 
 @app.route('/approve_transactions', methods=['POST'])
 def approve_transactions():
@@ -302,6 +187,29 @@ def approve_transactions():
     db.session.commit()
     flash('Selected transactions approved and journal entries created.', 'success')
     return redirect(url_for('unapproved_transactions'))
+
+@app.route('/delete_unapproved_transaction/<int:transaction_id>')
+def delete_unapproved_transaction(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session['client_id']:
+        return "Unauthorized", 403
+    db.session.delete(transaction)
+    db.session.commit()
+    flash('Unapproved transaction deleted successfully.', 'success')
+    return redirect(url_for('unapproved_transactions'))
+
+@app.route('/delete_unapproved_transactions', methods=['POST'])
+def delete_unapproved_transactions():
+    transaction_ids = request.form.getlist('transaction_ids')
+    if not transaction_ids:
+        flash('No transactions selected.', 'warning')
+        return redirect(url_for('unapproved_transactions'))
+
+    Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f'{len(transaction_ids)} unapproved transactions deleted successfully.', 'success')
+    return redirect(url_for('unapproved_transactions'))
+
 
 @app.route('/audit_trail')
 def audit_trail():
@@ -1279,8 +1187,12 @@ def export_balance_sheet():
     output.headers["Content-type"] = "text/csv"
     return output
 
-@app.route('/rules', methods=['GET', 'POST'])
+@app.route('/rules')
 def rules():
+    return redirect(url_for('transaction_rules'))
+
+@app.route('/transaction_rules', methods=['GET', 'POST'])
+def transaction_rules():
     if request.method == 'POST':
         keyword = request.form['keyword']
         category = request.form['category']
@@ -1289,20 +1201,36 @@ def rules():
         db.session.add(new_rule)
         db.session.commit()
         flash('Rule created successfully.', 'success')
-        return redirect(url_for('rules'))
+        return redirect(url_for('transaction_rules'))
     else:
         rules = Rule.query.filter_by(client_id=session['client_id']).all()
         accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('rules.html', rules=rules, accounts=accounts)
+        return render_template('transaction_rules.html', rules=rules, accounts=accounts)
 
-@app.route('/add_rule', methods=['POST'])
-def add_rule():
+@app.route('/category_rules', methods=['GET', 'POST'])
+def category_rules():
+    if request.method == 'POST':
+        keyword = request.form['keyword']
+        category = request.form['category']
+        new_rule = CategoryRule(keyword=keyword, category=category, client_id=session['client_id'])
+        db.session.add(new_rule)
+        db.session.commit()
+        flash('Category rule created successfully.', 'success')
+        return redirect(url_for('category_rules'))
+    else:
+        rules = CategoryRule.query.filter_by(client_id=session['client_id']).all()
+        return render_template('category_rules.html', rules=rules)
+
+@app.route('/add_transaction_rule', methods=['POST'])
+def add_transaction_rule():
     name = request.form['name']
     keyword = request.form.get('keyword')
     condition = request.form.get('condition')
     value_str = request.form.get('value')
     category = request.form.get('category')
     transaction_type = request.form.get('transaction_type')
+    debit_account_id = request.form.get('debit_account_id')
+    credit_account_id = request.form.get('credit_account_id')
     is_automatic = request.form.get('is_automatic') == 'true'
     include_accounts = request.form.getlist('include_accounts')
     exclude_accounts = request.form.getlist('exclude_accounts')
@@ -1310,11 +1238,11 @@ def add_rule():
     # Basic validation
     if not keyword and not (condition and value_str):
         flash('A rule must have at least a keyword or a value condition.', 'danger')
-        return redirect(url_for('rules'))
+        return redirect(url_for('transaction_rules'))
     
-    if not category and not transaction_type:
-        flash('A rule must specify at least a category or a transaction type to set.', 'danger')
-        return redirect(url_for('rules'))
+    if not category and not transaction_type and not debit_account_id and not credit_account_id:
+        flash('A rule must specify at least a category, a transaction type, or debit/credit accounts to set.', 'danger')
+        return redirect(url_for('transaction_rules'))
 
     value = float(value_str) if value_str else None
 
@@ -1335,7 +1263,9 @@ def add_rule():
         condition=condition,
         value=value,
         category=category, 
-        transaction_type=transaction_type, 
+        transaction_type=transaction_type,
+        debit_account_id=debit_account_id,
+        credit_account_id=credit_account_id,
         is_automatic=is_automatic,
         client_id=session['client_id']
     )
@@ -1350,21 +1280,63 @@ def add_rule():
 
     db.session.add(new_rule)
     db.session.commit()
-    flash('Rule created successfully.', 'success')
-    return redirect(url_for('rules'))
+    flash('Transaction rule created successfully.', 'success')
+    return redirect(url_for('transaction_rules'))
 
-@app.route('/delete_rule/<int:rule_id>')
-def delete_rule(rule_id):
+@app.route('/add_category_rule', methods=['POST'])
+def add_category_rule():
+    name = request.form['name']
+    keyword = request.form.get('keyword')
+    condition = request.form.get('condition')
+    value_str = request.form.get('value')
+    category = request.form.get('category')
+
+    # Basic validation
+    if not keyword and not (condition and value_str):
+        flash('A rule must have at least a keyword or a value condition.', 'danger')
+        return redirect(url_for('category_rules'))
+    
+    if not category:
+        flash('A category rule must specify a category to set.', 'danger')
+        return redirect(url_for('category_rules'))
+
+    value = float(value_str) if value_str else None
+
+    new_rule = CategoryRule(
+        name=name,
+        keyword=keyword,
+        condition=condition,
+        value=value,
+        category=category,
+        client_id=session['client_id']
+    )
+    db.session.add(new_rule)
+    db.session.commit()
+    flash('Category rule created successfully.', 'success')
+    return redirect(url_for('category_rules'))
+
+@app.route('/delete_transaction_rule/<int:rule_id>')
+def delete_transaction_rule(rule_id):
     rule = Rule.query.get_or_404(rule_id)
     if rule.client_id != session['client_id']:
         return "Unauthorized", 403
     db.session.delete(rule)
     db.session.commit()
-    flash('Rule deleted successfully.', 'success')
-    return redirect(url_for('rules'))
+    flash('Transaction rule deleted successfully.', 'success')
+    return redirect(url_for('transaction_rules'))
 
-@app.route('/edit_rule/<int:rule_id>', methods=['GET', 'POST'])
-def edit_rule(rule_id):
+@app.route('/delete_category_rule/<int:rule_id>')
+def delete_category_rule(rule_id):
+    rule = CategoryRule.query.get_or_404(rule_id)
+    if rule.client_id != session['client_id']:
+        return "Unauthorized", 403
+    db.session.delete(rule)
+    db.session.commit()
+    flash('Category rule deleted successfully.', 'success')
+    return redirect(url_for('category_rules'))
+
+@app.route('/edit_transaction_rule/<int:rule_id>', methods=['GET', 'POST'])
+def edit_transaction_rule(rule_id):
     rule = Rule.query.get_or_404(rule_id)
     if rule.client_id != session['client_id']:
         return "Unauthorized", 403
@@ -1375,6 +1347,8 @@ def edit_rule(rule_id):
         value_str = request.form.get('value')
         rule.category = request.form.get('category')
         rule.transaction_type = request.form.get('transaction_type')
+        rule.debit_account_id = request.form.get('debit_account_id')
+        rule.credit_account_id = request.form.get('credit_account_id')
         rule.is_automatic = request.form.get('is_automatic') == 'true'
         include_accounts = request.form.getlist('include_accounts')
         exclude_accounts = request.form.getlist('exclude_accounts')
@@ -1382,11 +1356,11 @@ def edit_rule(rule_id):
         # Basic validation
         if not rule.keyword and not (rule.condition and value_str):
             flash('A rule must have at least a keyword or a value condition.', 'danger')
-            return redirect(url_for('edit_rule', rule_id=rule_id))
+            return redirect(url_for('edit_transaction_rule', rule_id=rule_id))
         
-        if not rule.category and not rule.transaction_type:
-            flash('A rule must specify at least a category or a transaction type to set.', 'danger')
-            return redirect(url_for('edit_rule', rule_id=rule_id))
+        if not rule.category and not rule.transaction_type and not rule.debit_account_id and not rule.credit_account_id:
+            flash('A rule must specify at least a category, a transaction type, or debit/credit accounts to set.', 'danger')
+            return redirect(url_for('edit_transaction_rule', rule_id=rule_id))
 
         rule.value = float(value_str) if value_str else None
 
@@ -1413,11 +1387,41 @@ def edit_rule(rule_id):
             rule.accounts.append(link)
 
         db.session.commit()
-        flash('Rule updated successfully.', 'success')
-        return redirect(url_for('rules'))
+        flash('Transaction rule updated successfully.', 'success')
+        return redirect(url_for('transaction_rules'))
     else:
         accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
         return render_template('edit_rule.html', rule=rule, accounts=accounts)
+
+@app.route('/edit_category_rule/<int:rule_id>', methods=['GET', 'POST'])
+def edit_category_rule(rule_id):
+    rule = CategoryRule.query.get_or_404(rule_id)
+    if rule.client_id != session['client_id']:
+        return "Unauthorized", 403
+    if request.method == 'POST':
+        rule.name = request.form['name']
+        rule.keyword = request.form.get('keyword')
+        rule.condition = request.form.get('condition')
+        value_str = request.form.get('value')
+        rule.category = request.form.get('category')
+
+        # Basic validation
+        if not rule.keyword and not (rule.condition and value_str):
+            flash('A category rule must have at least a keyword or a value condition.', 'danger')
+            return redirect(url_for('edit_category_rule', rule_id=rule_id))
+        
+        if not rule.category:
+            flash('A category rule must specify a category to set.', 'danger')
+            return redirect(url_for('edit_category_rule', rule_id=rule_id))
+
+        rule.value = float(value_str) if value_str else None
+
+        db.session.commit()
+        flash('Category rule updated successfully.', 'success')
+        return redirect(url_for('category_rules'))
+    else:
+        return render_template('edit_category_rule.html', rule=rule)
+
 
 @app.route('/products')
 def products():

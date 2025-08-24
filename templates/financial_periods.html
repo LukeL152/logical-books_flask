@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="mb-4">Financial Periods</h1>
+
+<!-- Create Period Form -->
+<h2 class="mt-4">Create New Period</h2>
+<form method="POST" action="{{ url_for('financial_periods') }}" class="mb-4 p-3 border rounded">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+            <label for="start_date" class="form-label">Start Date</label>
+            <input type="date" id="start_date" name="start_date" class="form-control" required>
+        </div>
+        <div class="col-md-4">
+            <label for="end_date" class="form-label">End Date</label>
+            <input type="date" id="end_date" name="end_date" class="form-control" required>
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary">Create Period</button>
+        </div>
+    </div>
+</form>
+
+<!-- Existing Periods -->
+<h2 class="mt-5">Existing Periods</h2>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for period in periods %}
+        <tr>
+            <td>{{ period.start_date }}</td>
+            <td>{{ period.end_date }}</td>
+            <td>
+                {% if period.is_closed %}
+                    <span class="badge bg-danger">Closed</span>
+                {% else %}
+                    <span class="badge bg-success">Open</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if not period.is_closed %}
+                    <a href="{{ url_for('close_period', period_id=period.id) }}" class="btn btn-sm btn-warning" onclick="return confirm('Are you sure you want to close this period? This will lock all journal entries within this date range.')">Close Period</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

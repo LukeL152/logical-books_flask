@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-    <h1 class="mb-4">Rules</h1>
+    <h1 class="mb-4">Transaction Rules</h1>
 
     <!-- Add Rule Form -->
-    <form action="{{ url_for('add_rule') }}" method="post" class="mb-4 p-3 border rounded">
+    <form action="{{ url_for('add_transaction_rule') }}" method="post" class="mb-4 p-3 border rounded">
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label for="name" class="form-label">Rule Name</label>
@@ -36,6 +36,24 @@
                     <option value="">-- No Change --</option>
                     <option value="income">Income</option>
                     <option value="expense">Expense</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="debit_account_id" class="form-label">Debit Account</label>
+                <select id="debit_account_id" name="debit_account_id" class="form-select">
+                    <option value="">-- No Change --</option>
+                    {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="credit_account_id" class="form-label">Credit Account</label>
+                <select id="credit_account_id" name="credit_account_id" class="form-select">
+                    <option value="">-- No Change --</option>
+                    {% for account in accounts %}
+                        <option value="{{ account.id }}">{{ account.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-2">
@@ -75,6 +93,8 @@
                 <th>Accounts</th>
                 <th>Category</th>
                 <th>Transaction Type</th>
+                <th>Debit Account</th>
+                <th>Credit Account</th>
                 <th>Automatic</th>
                 <th>Actions</th>
             </tr>
@@ -106,10 +126,12 @@
                 </td>
                 <td>{{ rule.category }}</td>
                 <td>{{ rule.transaction_type }}</td>
+                <td>{{ rule.debit_account.name if rule.debit_account else '' }}</td>
+                <td>{{ rule.credit_account.name if rule.credit_account else '' }}</td>
                 <td>{{ "Yes" if rule.is_automatic else "No" }}</td>
                 <td>
-                    <a href="{{ url_for('edit_rule', rule_id=rule.id) }}" class="btn btn-sm btn-primary">Edit</a>
-                    <a href="{{ url_for('delete_rule', rule_id=rule.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this rule?')">Delete</a>
+                    <a href="{{ url_for('edit_transaction_rule', rule_id=rule.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('delete_transaction_rule', rule_id=rule.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this rule?')">Delete</a>
                 </td>
             </tr>
             {% endfor %}

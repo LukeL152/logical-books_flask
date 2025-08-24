@@ -100,7 +100,7 @@ Transforming Logical Books into a robust, scalable, and secure production-grade 
     *   **Action:** Extend the application to support multiple distinct users, each with their own set of financial data, and implement granular permissions.
     *   **Reason:** Enable the application for multiple businesses or individuals.
 *   **Advanced Reporting:**
-    *   **Action:** Enhance existing reports (Balance Sheet, Income Statement) with more customization options (e.g., date ranges, drill-down capabilities). Add new reports (e.g., Cash Flow Statement, Trial Balance). Implement export functionalities (PDF, CSV, Excel).
+    *   **Action:** Enhance existing reports (Balance Sheet, Income Statement) with more customization options (e.g., date ranges, drill-down capabilities). Add new reports (e.g., Cash Flow Statement, Trial Balance). Implement export functionalities (PDF, CSV, Excel). (Note: Potential bug in CSV exports for Income Statement and Balance Sheet where calculations might not be fully accurate.)
     *   **Reason:** Provide more comprehensive financial insights.
 *   **API Development:**
     *   **Action:** Develop a RESTful API for programmatic access to financial data, enabling integrations with other systems (e.g., banking APIs, e-commerce platforms).

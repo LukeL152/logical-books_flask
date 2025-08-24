@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
 {% macro render_account_row(account, level=0) %}
-    <tr>
+    <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id }}" class="account-row {% if level > 0 %}child-row-{{ account.parent_id }} d-none{% endif %}">
         <td style="padding-left: {{ level * 20 }}px;">
             {% if account.children.all() %}
-                <i class="fas fa-caret-right"></i>
+                <i class="fas fa-caret-right toggle-children" style="cursor: pointer;"></i>
             {% endif %}
             {{ account.name }}
         </td>
@@ -79,4 +79,23 @@
             <button type="submit" class="btn btn-primary">Add Account</button>
         </div>
     </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const toggles = document.querySelectorAll('.toggle-children');
+        toggles.forEach(toggle => {
+            toggle.addEventListener('click', function () {
+                const accountId = this.closest('tr').dataset.id;
+                const children = document.querySelectorAll(`.child-row-${accountId}`);
+                children.forEach(child => {
+                    child.classList.toggle('d-none');
+                });
+                this.classList.toggle('fa-caret-right');
+                this.classList.toggle('fa-caret-down');
+            });
+        });
+    });
+</script>
 {% endblock %}

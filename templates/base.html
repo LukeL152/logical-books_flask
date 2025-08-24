@@ -66,8 +66,14 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('budget') }}">Budget</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('rules') }}">Rules</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Rules
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('transaction_rules') }}">Transaction Rules</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('category_rules') }}">Category Rules</a></li>
+                        </ul>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('audit_trail') }}">Audit Trail</a>
