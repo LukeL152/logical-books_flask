@@ -1,11 +1,22 @@
 {% extends "base.html" %}
+
+{% macro render_account_row(account, level=0) %}
+    <tr>
+        <td style="padding-left: {{ level * 25 }}px;">{{ account.name }}</td>
+        <td class="text-end">{{ "%.2f"|format(account.balance) }}</td>
+    </tr>
+    {% for child in account.children %}
+        {{ render_account_row(child, level + 1) }}
+    {% endfor %}
+{% endmacro %}
+
 {% block content %}
     <h1 class="mb-4">Income Statement</h1>
 
     <table class="table table-striped">
         <thead>
             <tr>
-                <th>Category</th>
+                <th>Account</th>
                 <th class="text-end">Amount</th>
             </tr>
         </thead>
@@ -13,61 +24,28 @@
             <tr>
                 <td colspan="2"><strong>Revenue</strong></td>
             </tr>
-            {% for item in revenue %}
-            <tr>
-                <td>{{ item.category }}</td>
-                <td class="text-end">{{ "%.2f"|format(item.total) }}</td>
-            </tr>
+            {% for account in revenue_data %}
+                {{ render_account_row(account, 0) }}
             {% endfor %}
             <tr class="table-primary">
                 <td><strong>Total Revenue</strong></td>
                 <td class="text-end"><strong>{{ "%.2f"|format(total_revenue) }}</strong></td>
             </tr>
+            
             <tr>
-                <td colspan="2"><strong>Cost of Goods Sold</strong></td>
+                <td colspan="2"><strong>Expenses</strong></td>
             </tr>
-            <tr>
-                <td>COGS</td>
-                <td class="text-end">{{ "%.2f"|format(cogs) }}</td>
-            </tr>
-            <tr class="table-primary">
-                <td><strong>Gross Profit</strong></td>
-                <td class="text-end"><strong>{{ "%.2f"|format(gross_profit) }}</strong></td>
-            </tr>
-            <tr>
-                <td>Gross Profit Margin</td>
-                <td class="text-end">{{ "%.2f"|format(gross_profit_margin) }}%</td>
-            </tr>
-            <tr>
-                <td colspan="2"><strong>Operating Expenses</strong></td>
-            </tr>
-            {% for item in expenses %}
-            {% if item.category != 'COGS' %}
-            <tr>
-                <td>{{ item.category }}</td>
-                <td class="text-end">{{ "%.2f"|format(item.total) }}</td>
-            </tr>
-            {% endif %}
+            {% for account in expense_data %}
+                {{ render_account_row(account, 0) }}
             {% endfor %}
             <tr class="table-primary">
-                <td><strong>Total Operating Expenses</strong></td>
-                <td class="text-end"><strong>{{ "%.2f"|format(operating_expenses) }}</strong></td>
+                <td><strong>Total Expenses</strong></td>
+                <td class="text-end"><strong>{{ "%.2f"|format(total_expenses) }}</strong></td>
             </tr>
-            <tr class="table-success">
-                <td><strong>Operating Income</strong></td>
-                <td class="text-end"><strong>{{ "%.2f"|format(operating_income) }}</strong></td>
-            </tr>
-            <tr>
-                <td>Operating Profit Margin</td>
-                <td class="text-end">{{ "%.2f"|format(operating_profit_margin) }}%</td>
-            </tr>
+
             <tr class="table-success">
                 <td><strong>Net Income</strong></td>
                 <td class="text-end"><strong>{{ "%.2f"|format(net_income) }}</strong></td>
-            </tr>
-            <tr>
-                <td>Net Profit Margin</td>
-                <td class="text-end">{{ "%.2f"|format(net_profit_margin) }}%</td>
             </tr>
         </tbody>
     </table>

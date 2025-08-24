@@ -20,3 +20,4 @@ gunicorn
 APScheduler==3.10.1
 Flask-APScheduler==1.13.1
 gunicorn==22.0.0
+Markdown==3.6

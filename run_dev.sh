@@ -14,6 +14,6 @@ export FLASK_DEBUG=1
 echo "Upgrading database..."
 ./venv/bin/python3 -m flask db upgrade
 
-# Start the Flask application
-echo "Starting Flask application with Gunicorn on port 8000..."
-./venv/bin/python3 -m gunicorn --bind 0.0.0.0:8000 wsgi:app
+# Start the Flask development server
+echo "Starting Flask development server on port 8000..."
+./venv/bin/python3 -m flask run --port=8000

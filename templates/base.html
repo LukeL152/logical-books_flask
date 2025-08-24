@@ -58,10 +58,9 @@
                         <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                             <li><a class="dropdown-item" href="{{ url_for('products') }}">Products</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('inventory') }}">Inventory</a></li>
-                                                    <li><a class="dropdown-item" href="{{ url_for('sales') }}">Sales</a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('accruals') }}">Accruals</a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('recurring_transactions') }}">Recurring Transactions</a></li>
-                    </ul>
+                            <li><a class="dropdown-item" href="{{ url_for('sales') }}">Sales</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('accruals') }}">Accruals</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('recurring_transactions') }}">Recurring Transactions</a></li>
                         </ul>
                     </li>
                     <li class="nav-item">
@@ -73,10 +72,13 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('audit_trail') }}">Audit Trail</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('bookkeeping_guide') }}">Bookkeeping Guide</a>
+                    </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('clients') }}">Switch Client</a>
+                        <a class="nav-link" href="{{ url_for('clients') }}">Clients</a>
                     </li>
                 </ul>
             </div>

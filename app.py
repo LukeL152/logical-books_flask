@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response
+from markupsafe import Markup
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_apscheduler import APScheduler
@@ -7,10 +8,18 @@ import io
 from datetime import datetime, timedelta
 from collections import defaultdict
 import json
+import markdown
 
 import os
 
+from markupsafe import Markup
+
 app = Flask(__name__)
+
+@app.template_filter('nl2br')
+def nl2br(s):
+    return Markup(s.replace('\n', '<br>\n')) if s else ''
+
 app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real application
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'bookkeeping.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -64,7 +73,7 @@ def create_recurring_journal_entries():
                 description=transaction.description,
                 debit_account_id=transaction.debit_account_id,
                 credit_account_id=transaction.credit_account_id,
-                amount=transaction.amount,
+                amount=abs(transaction.amount),
                 client_id=session['client_id']
             )
             db.session.add(new_entry)
@@ -72,7 +81,17 @@ def create_recurring_journal_entries():
 
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    contact_name = db.Column(db.String(100), nullable=False)
+    business_name = db.Column(db.String(100), unique=True)
+    contact_email = db.Column(db.String(120))
+    contact_phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    entity_structure = db.Column(db.String(50))
+    services_offered = db.Column(db.Text)
+    payment_method = db.Column(db.String(50))
+    billing_cycle = db.Column(db.String(50))
+    client_status = db.Column(db.String(20), default='Active')
+    notes = db.Column(db.Text)
 
 class Account(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -81,6 +100,8 @@ class Account(db.Model):
     opening_balance = db.Column(db.Float, nullable=True, default=0.0)
     category = db.Column(db.String(100), nullable=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
 
 class JournalEntry(db.Model):
     __tablename__ = 'journal_entries'
@@ -206,7 +227,7 @@ def add_transaction():
     if request.method == 'POST':
         date = request.form['date']
         description = request.form['description']
-        amount = float(request.form['amount'])
+        amount = abs(float(request.form['amount']))
         new_transaction = Transaction(date=date, description=description, amount=amount, client_id=session['client_id'])
         db.session.add(new_transaction)
         db.session.commit()
@@ -222,7 +243,7 @@ def edit_transaction(transaction_id):
     if request.method == 'POST':
         transaction.date = request.form['date']
         transaction.description = request.form['description']
-        transaction.amount = float(request.form['amount'])
+        transaction.amount = abs(float(request.form['amount']))
         db.session.commit()
         flash('Transaction updated successfully.', 'success')
         return redirect(url_for('transactions'))
@@ -271,7 +292,7 @@ def approve_transactions():
             description=transaction.description,
             debit_account_id=debit_account_id,
             credit_account_id=credit_account_id,
-            amount=transaction.amount,
+            amount=abs(transaction.amount),
             client_id=session['client_id']
         )
         db.session.add(new_entry)
@@ -337,21 +358,40 @@ def before_request():
     if 'client_id' not in session and request.endpoint not in ['clients', 'add_client', 'select_client', 'edit_client', 'delete_client']:
         return redirect(url_for('clients'))
 
-@app.route('/clients', methods=['GET', 'POST'])
+@app.route('/clients')
 def clients():
+    clients = Client.query.all()
+    return render_template('clients.html', clients=clients)
+
+@app.route('/client/<int:client_id>')
+def client_detail(client_id):
+    client = Client.query.get_or_404(client_id)
+    return render_template('client_detail.html', client=client)
+
+@app.route('/add_client', methods=['GET', 'POST'])
+def add_client():
     if request.method == 'POST':
-        name = request.form['name']
-        if Client.query.filter_by(name=name).first():
-            flash(f'Client "{name}" already exists.', 'danger')
+        if Client.query.filter_by(business_name=request.form['business_name']).first():
+            flash(f'Client "{request.form["business_name"]}" already exists.', 'danger')
             return redirect(url_for('clients'))
-        new_client = Client(name=name)
+        new_client = Client(
+            contact_name=request.form['contact_name'],
+            business_name=request.form['business_name'],
+            contact_email=request.form['contact_email'],
+            contact_phone=request.form['contact_phone'],
+            address=request.form['address'],
+            entity_structure=request.form['entity_structure'],
+            services_offered=request.form['services_offered'],
+            payment_method=request.form['payment_method'],
+            billing_cycle=request.form['billing_cycle'],
+            client_status=request.form['client_status'],
+            notes=request.form['notes']
+        )
         db.session.add(new_client)
         db.session.commit()
-        flash(f'Client "{name}" created successfully.', 'success')
+        flash(f'Client "{new_client.business_name}" created successfully.', 'success')
         return redirect(url_for('clients'))
-    else:
-        clients = Client.query.all()
-        return render_template('clients.html', clients=clients)
+    return render_template('add_client.html')
 
 @app.route('/select_client/<int:client_id>')
 def select_client(client_id):
@@ -362,11 +402,22 @@ def select_client(client_id):
 def edit_client(client_id):
     client = Client.query.get_or_404(client_id)
     if request.method == 'POST':
-        name = request.form['name']
-        if Client.query.filter(Client.name == name, Client.id != client_id).first():
-            flash(f'Client "{name}" already exists.', 'danger')
+        if Client.query.filter(Client.business_name == request.form['business_name'], Client.id != client_id).first():
+            flash(f'Client with business name "{request.form["business_name"]}" already exists.', 'danger')
             return redirect(url_for('edit_client', client_id=client_id))
-        client.name = name
+        
+        client.contact_name = request.form['contact_name']
+        client.business_name = request.form['business_name']
+        client.contact_email = request.form['contact_email']
+        client.contact_phone = request.form['contact_phone']
+        client.address = request.form['address']
+        client.entity_structure = request.form['entity_structure']
+        client.services_offered = request.form['services_offered']
+        client.payment_method = request.form['payment_method']
+        client.billing_cycle = request.form['billing_cycle']
+        client.client_status = request.form['client_status']
+        client.notes = request.form['notes']
+        
         db.session.commit()
         flash('Client updated successfully.', 'success')
         return redirect(url_for('clients'))
@@ -535,6 +586,16 @@ def dashboard():
 def index():
     return redirect(url_for('dashboard'))
 
+@app.route('/bookkeeping_guide')
+def bookkeeping_guide():
+    try:
+        with open('BOOKKEEPING_GUIDE.md', 'r') as f:
+            content = f.read()
+        guide_content = markdown.markdown(content, extensions=['tables'])
+    except FileNotFoundError:
+        guide_content = "<p>Error: BOOKKEEPING_GUIDE.md not found.</p>"
+    return render_template('bookkeeping_guide.html', guide_content=guide_content)
+
 @app.route('/category_transactions/<category_name>')
 def category_transactions(category_name):
     entries = JournalEntry.query.filter_by(category=category_name, client_id=session['client_id']).order_by(JournalEntry.date.desc()).all()
@@ -590,8 +651,9 @@ def full_pie_chart_income():
 
 @app.route('/accounts')
 def accounts():
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('accounts.html', accounts=accounts)
+    accounts = Account.query.filter_by(client_id=session['client_id'], parent_id=None).order_by(Account.name).all()
+    all_accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    return render_template('accounts.html', accounts=accounts, all_accounts=all_accounts)
 
 @app.route('/add_account', methods=['POST'])
 def add_account():
@@ -599,10 +661,16 @@ def add_account():
     account_type = request.form['type']
     category = request.form.get('category')
     opening_balance = float(request.form['opening_balance'])
+    parent_id = request.form.get('parent_id')
+    if parent_id == 'None':
+        parent_id = None
+    else:
+        parent_id = int(parent_id)
+
     if Account.query.filter_by(name=name, client_id=session['client_id']).first():
         flash(f'Account "{name}" already exists.', 'danger')
         return redirect(url_for('accounts'))
-    new_account = Account(name=name, type=account_type, category=category, opening_balance=opening_balance, client_id=session['client_id'])
+    new_account = Account(name=name, type=account_type, category=category, opening_balance=opening_balance, parent_id=parent_id, client_id=session['client_id'])
     db.session.add(new_account)
     db.session.commit()
     flash(f'Account "{name}" created successfully.', 'success')
@@ -613,20 +681,39 @@ def edit_account(account_id):
     account = Account.query.get_or_404(account_id)
     if account.client_id != session['client_id']:
         return "Unauthorized", 403
+
     if request.method == 'POST':
         name = request.form['name']
+        parent_id = request.form.get('parent_id')
+
+        if parent_id == 'None' or parent_id == "''":
+            parent_id = None
+        else:
+            parent_id = int(parent_id)
+
+        # Prevent setting an account as its own parent
+        if parent_id == account.id:
+            flash('An account cannot be its own parent.', 'danger')
+            return redirect(url_for('edit_account', account_id=account_id))
+
+        # A more complex check would be needed to prevent circular dependencies
+        # (e.g., setting parent to one of its own children), but this covers the direct case.
+
         if Account.query.filter(Account.name == name, Account.id != account_id, Account.client_id == session['client_id']).first():
             flash(f'Account "{name}" already exists.', 'danger')
             return redirect(url_for('edit_account', account_id=account_id))
+        
         account.name = name
         account.type = request.form['type']
         account.category = request.form.get('category')
         account.opening_balance = float(request.form['opening_balance'])
+        account.parent_id = parent_id
         db.session.commit()
         flash('Account updated successfully.', 'success')
         return redirect(url_for('accounts'))
     else:
-        return render_template('edit_account.html', account=account)
+        all_accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+        return render_template('edit_account.html', account=account, all_accounts=all_accounts)
 
 @app.route('/delete_account/<int:account_id>')
 def delete_account(account_id):
@@ -692,7 +779,7 @@ def add_entry():
     description = request.form['description']
     debit_account_id = request.form['debit_account_id']
     credit_account_id = request.form['credit_account_id']
-    amount = request.form['amount']
+    amount = abs(float(request.form['amount']))
     category = request.form['category']
     notes = request.form.get('notes')
     new_entry = JournalEntry(date=date, description=description, debit_account_id=debit_account_id, credit_account_id=credit_account_id, amount=amount, category=category, notes=notes, client_id=session['client_id'])
@@ -712,7 +799,7 @@ def edit_entry(entry_id):
         entry.description = request.form['description']
         entry.debit_account_id = request.form['debit_account_id']
         entry.credit_account_id = request.form['credit_account_id']
-        entry.amount = request.form['amount']
+        entry.amount = abs(float(request.form['amount']))
         entry.category = request.form['category']
         entry.notes = request.form.get('notes')
         db.session.commit()
@@ -975,96 +1062,79 @@ def import_csv():
 
 
 
+def get_account_and_children_ids(account):
+    account_ids = [account.id]
+    for child in account.children:
+        account_ids.extend(get_account_and_children_ids(child))
+    return account_ids
+
 @app.route('/ledger')
 def ledger():
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    ledger_data = []
-    total_ytd_net_change = 0
+    accounts = Account.query.filter_by(client_id=session['client_id'], parent_id=None).order_by(Account.name).all()
+    ledger_data = get_account_tree(accounts)
+    return render_template('ledger.html', ledger_data=ledger_data)
 
+def get_account_tree(accounts):
+    account_tree = []
     for account in accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
-        net_change = credits - debits
-        closing_balance = account.opening_balance + net_change
-
+        account_ids = get_account_and_children_ids(account)
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(account_ids)).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(account_ids)).scalar() or 0
+        
         if account.type in ['Asset', 'Expense']:
-            total_ytd_net_change += net_change
+            balance = account.opening_balance + debits - credits
         else: # Liability, Equity, Income
-            total_ytd_net_change -= net_change
+            balance = account.opening_balance + credits - debits
 
-        ledger_data.append({
+        children_tree = get_account_tree(account.children.all())
+        
+        account_tree.append({
             'name': account.name,
-            'type': account.type,
-            'opening_balance': account.opening_balance,
-            'debits': abs(debits),
-            'credits': credits,
-            'net_change': net_change,
-            'closing_balance': closing_balance
+            'balance': balance,
+            'children': children_tree
         })
-
-    return render_template('ledger.html', ledger_data=ledger_data, total_ytd_net_change=total_ytd_net_change)
+    return account_tree
 
 @app.route('/income_statement')
 def income_statement():
-    revenue = db.session.query(Account.category, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Revenue', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.category).all()
-    expenses = db.session.query(Account.category, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.category).all()
+    revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
+    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
 
-    total_revenue = sum(r.total for r in revenue)
-    total_expenses = sum(e.total for e in expenses)
+    revenue_data = get_account_tree(revenue_accounts)
+    expense_data = get_account_tree(expense_accounts)
+
+    total_revenue = sum(item['balance'] for item in revenue_data)
+    total_expenses = sum(item['balance'] for item in expense_data)
     net_income = total_revenue - total_expenses
 
-    cogs_accounts = Account.query.filter_by(category='COGS', client_id=session['client_id']).all()
-    cogs = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in cogs_accounts]), JournalEntry.is_accrual == False).scalar() or 0
-    gross_profit = total_revenue - cogs
-    gross_profit_margin = (gross_profit / total_revenue) * 100 if total_revenue else 0
-
-    operating_expenses = total_expenses - cogs
-    operating_income = gross_profit - operating_expenses
-    operating_profit_margin = (operating_income / total_revenue) * 100 if total_revenue else 0
-
-    net_profit_margin = (net_income / total_revenue) * 100 if total_revenue else 0
-
     return render_template('income_statement.html', 
-                           revenue=revenue, 
-                           expenses=expenses, 
+                           revenue_data=revenue_data, 
+                           expense_data=expense_data, 
                            total_revenue=total_revenue, 
                            total_expenses=total_expenses, 
-                           net_income=net_income,
-                           cogs=cogs,
-                           gross_profit=gross_profit,
-                           gross_profit_margin=gross_profit_margin,
-                           operating_expenses=operating_expenses,
-                           operating_income=operating_income,
-                           operating_profit_margin=operating_profit_margin,
-                           net_profit_margin=net_profit_margin
-                           )
+                           net_income=net_income)
 
 @app.route('/balance_sheet')
 def balance_sheet():
-    assets = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Asset', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.name).all()
-    liabilities = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Liability', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.name).all()
-    equity = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('balance')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Equity', JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).group_by(Account.name).all()
+    asset_accounts = Account.query.filter_by(client_id=session['client_id'], type='Asset', parent_id=None).all()
+    liability_accounts = Account.query.filter_by(client_id=session['client_id'], type='Liability', parent_id=None).all()
+    equity_accounts = Account.query.filter_by(client_id=session['client_id'], type='Equity', parent_id=None).all()
 
-    total_assets = sum(a.balance for a in assets)
-    total_liabilities = sum(l.balance for l in liabilities)
-    total_equity = sum(e.balance for e in equity)
+    asset_data = get_account_tree(asset_accounts)
+    liability_data = get_account_tree(liability_accounts)
+    equity_data = get_account_tree(equity_accounts)
 
-    current_assets = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(Account.type.in_(['Asset', 'Accounts Receivable', 'Inventory']), JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).scalar() or 0
-    current_liabilities = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(Account.type.in_(['Liability', 'Accounts Payable']), JournalEntry.client_id == session['client_id'], JournalEntry.is_accrual == False).scalar() or 0
-    current_ratio = current_assets / current_liabilities if current_liabilities else 0
-
-    debt_to_equity_ratio = total_liabilities / total_equity if total_equity else 0
+    total_assets = sum(item['balance'] for item in asset_data)
+    total_liabilities = sum(item['balance'] for item in liability_data)
+    total_equity = sum(item['balance'] for item in equity_data)
 
     return render_template('balance_sheet.html', 
-                           assets=assets, 
-                           liabilities=liabilities, 
-                           equity=equity, 
+                           asset_data=asset_data, 
+                           liability_data=liability_data, 
+                           equity_data=equity_data, 
                            total_assets=total_assets, 
                            total_liabilities=total_liabilities, 
-                           total_equity=total_equity,
-                           current_ratio=current_ratio,
-                           debt_to_equity_ratio=debt_to_equity_ratio
-                           )
+                           total_equity=total_equity)
 
 @app.route('/statement_of_cash_flows')
 def statement_of_cash_flows():
@@ -1137,7 +1207,7 @@ def statement_of_cash_flows():
 def budget():
     if request.method == 'POST':
         category = request.form['category']
-        amount = float(request.form['amount'])
+        amount = abs(float(request.form['amount']))
         if Budget.query.filter_by(category=category, client_id=session['client_id']).first():
             flash(f'Budget for category "{category}" already exists.', 'danger')
             return redirect(url_for('budget'))
@@ -1359,7 +1429,7 @@ def add_product():
     if request.method == 'POST':
         name = request.form['name']
         description = request.form['description']
-        cost = float(request.form['cost'])
+        cost = abs(float(request.form['cost']))
 
         new_product = Product(
             name=name, 
@@ -1434,7 +1504,7 @@ def add_sale():
                 description=f"Sale of {quantity} {new_sale.product.name}",
                 debit_account_id=cash_account.id,
                 credit_account_id=sales_revenue_account.id,
-                amount=price * quantity,
+                amount=abs(price * quantity),
                 client_id=session['client_id']
             ))
 
@@ -1444,7 +1514,7 @@ def add_sale():
                 description=f"COGS for sale of {quantity} {new_sale.product.name}",
                 debit_account_id=cogs_account.id,
                 credit_account_id=inventory_account.id,
-                amount=new_sale.product.cost * quantity,
+                amount=abs(new_sale.product.cost * quantity),
                 client_id=session['client_id']
             ))
 
@@ -1465,7 +1535,7 @@ def add_accrual():
     if request.method == 'POST':
         date = request.form['date']
         description = request.form['description']
-        amount = float(request.form['amount'])
+        amount = abs(float(request.form['amount']))
         debit_account_id = request.form['debit_account_id']
         credit_account_id = request.form['credit_account_id']
 
@@ -1495,7 +1565,7 @@ def recurring_transactions():
 def approve_recurring_transaction():
     name = request.form['name']
     description = request.form['description']
-    amount = float(request.form['amount'])
+    amount = abs(float(request.form['amount']))
     frequency = request.form['frequency']
     start_date = request.form['start_date']
     end_date = request.form['end_date']
@@ -1531,7 +1601,7 @@ def reverse_accruals():
                     description=f"Reversal of: {accrual.description}",
                     debit_account_id=accrual.credit_account_id,
                     credit_account_id=accrual.debit_account_id,
-                    amount=accrual.amount,
+                    amount=abs(accrual.amount),
                     is_accrual=False,
                     client_id=session['client_id']
                 )
@@ -1601,7 +1671,7 @@ def add_fixed_asset():
         name = request.form['name']
         description = request.form['description']
         purchase_date = request.form['purchase_date']
-        cost = float(request.form['cost'])
+        cost = abs(float(request.form['cost']))
         useful_life = int(request.form['useful_life'])
         salvage_value = float(request.form['salvage_value'])
 
@@ -1665,7 +1735,7 @@ def calculate_and_record_depreciation():
         assets = FixedAsset.query.filter_by(client_id=session['client_id']).all()
         for asset in assets:
             # Calculate monthly depreciation
-            monthly_depreciation = (asset.cost - asset.salvage_value) / (asset.useful_life * 12)
+            monthly_depreciation = abs((asset.cost - asset.salvage_value) / (asset.useful_life * 12))
             
             # Check if depreciation has already been recorded for the current month
             last_depreciation = Depreciation.query.filter_by(fixed_asset_id=asset.id).order_by(Depreciation.date.desc()).first()
@@ -1677,7 +1747,7 @@ def calculate_and_record_depreciation():
             # Record depreciation for the current month
             new_depreciation = Depreciation(
                 date=today.strftime('%Y-%m-%d'),
-                amount=monthly_depreciation,
+                amount=abs(monthly_depreciation),
                 fixed_asset_id=asset.id,
                 client_id=session['client_id']
             )
@@ -1693,7 +1763,7 @@ def calculate_and_record_depreciation():
                     description=f"Depreciation for {asset.name}",
                     debit_account_id=depreciation_expense_account.id,
                     credit_account_id=accumulated_depreciation_account.id,
-                    amount=monthly_depreciation,
+                    amount=abs(monthly_depreciation),
                     client_id=session['client_id']
                 )
                 db.session.add(new_entry)

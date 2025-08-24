@@ -1,4 +1,15 @@
 {% extends "base.html" %}
+
+{% macro render_account_row(account, level=0) %}
+    <tr>
+        <td style="padding-left: {{ level * 25 }}px;">{{ account.name }}</td>
+        <td class="text-end">{{ "%.2f"|format(account.balance) }}</td>
+    </tr>
+    {% for child in account.children %}
+        {{ render_account_row(child, level + 1) }}
+    {% endfor %}
+{% endmacro %}
+
 {% block content %}
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>General Ledger</h1>
@@ -8,27 +19,13 @@
         <thead>
             <tr>
                 <th>Account</th>
-                <th>Type</th>
-                <th>Opening Balance</th>
-                <th>Debits</th>
-                <th>Credits</th>
-                <th>Net Change</th>
-                <th>Closing Balance</th>
+                <th class="text-end">Balance</th>
             </tr>
         </thead>
         <tbody>
             {% for account in ledger_data %}
-            <tr>
-                <td>{{ account.name }}</td>
-                <td>{{ account.type }}</td>
-                <td>{{ "%.2f"|format(account.opening_balance) }}</td>
-                <td>{{ "%.2f"|format(account.debits) }}</td>
-                <td>{{ "%.2f"|format(account.credits) }}</td>
-                <td>{{ "%.2f"|format(account.net_change) }}</td>
-                <td>{{ "%.2f"|format(account.closing_balance) }}</td>
-            </tr>
+                {{ render_account_row(account) }}
             {% endfor %}
         </tbody>
     </table>
-    <h2 class="mt-4">Total YTD Net Change: {{ "%.2f"|format(total_ytd_net_change) }}</h2>
 {% endblock %}

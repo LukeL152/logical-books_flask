@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block title %}Bookkeeping Guide - Logical Books{% endblock %}
+
+{% block content %}
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                {{ guide_content|safe }}
+            </div>
+        </div>
+    </div>
+{% endblock %}
