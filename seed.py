@@ -1,4 +1,4 @@
-from app import app, db, Client, Account, JournalEntry, Rule, ImportTemplate, RuleAccountLink
+from app import app, db, Client, Account, JournalEntry, Rule, ImportTemplate
 
 def seed_data():
     with app.app_context():

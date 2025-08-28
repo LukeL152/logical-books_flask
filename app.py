@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response
-from markupsafe import Markup
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask_apscheduler import APScheduler
 import csv
 import io
@@ -9,7 +10,6 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import json
 import markdown
-from models import Client, Account, JournalEntry, ImportTemplate, Budget, Rule, RuleAccountLink, FixedAsset, Depreciation, Product, Inventory, Sale, RecurringTransaction, Transaction, AuditTrail, CategoryRule
 
 import os
 
@@ -25,12 +25,210 @@ app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real applicatio
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'bookkeeping.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-from database import db
-db.init_app(app)
+db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 scheduler = APScheduler()
 scheduler.init_app(app)
 scheduler.start()
+
+class Client(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    contact_name = db.Column(db.String(100), nullable=False)
+    business_name = db.Column(db.String(100), unique=True)
+    contact_email = db.Column(db.String(120))
+    contact_phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    entity_structure = db.Column(db.String(50))
+    services_offered = db.Column(db.Text)
+    payment_method = db.Column(db.String(50))
+    billing_cycle = db.Column(db.String(50))
+    client_status = db.Column(db.String(20), default='Active')
+    notes = db.Column(db.Text)
+
+class Role(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False)
+
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256))
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    client = db.relationship('Client', backref=db.backref('users', lazy=True))
+    role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
+    role = db.relationship('Role', backref=db.backref('users', lazy=True))
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+class Account(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    type = db.Column(db.String(50), nullable=False) # Asset, Liability, Equity, Revenue, Expense, Accounts Receivable, Accounts Payable, Inventory, Fixed Asset, Accumulated Depreciation, Long-Term Debt
+    opening_balance = db.Column(db.Float, nullable=True, default=0.0)
+    category = db.Column(db.String(100), nullable=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
+
+class JournalEntry(db.Model):
+    __tablename__ = 'journal_entries'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    description = db.Column(db.String(200))
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    category = db.Column(db.String(100))
+    notes = db.Column(db.String(500), nullable=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    locked = db.Column(db.Boolean, nullable=False, default=False)
+    is_accrual = db.Column(db.Boolean, nullable=True, default=False)
+    is_reversing = db.Column(db.Boolean, nullable=False, default=False)
+    reversal_date = db.Column(db.String(10), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='posted') # posted, voided
+    transaction_type = db.Column(db.String(20), nullable=True)
+    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
+    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
+    documents = db.relationship('Document', backref='journal_entry', cascade="all, delete-orphan")
+
+class Document(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class ImportTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False, unique=True)
+    date_col = db.Column(db.Integer, nullable=False)
+    description_col = db.Column(db.Integer, nullable=False)
+    amount_col = db.Column(db.Integer)
+    debit_col = db.Column(db.Integer)
+    credit_col = db.Column(db.Integer)
+    category_col = db.Column(db.Integer)
+    notes_col = db.Column(db.Integer)
+    has_header = db.Column(db.Boolean, nullable=False, default=False)
+    negate_amount = db.Column(db.Boolean, nullable=False, default=False)
+    account = db.relationship('Account', backref=db.backref('import_template', uselist=False, cascade="all, delete-orphan"))
+
+class Budget(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(100), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class RuleAccountLink(db.Model):
+    __tablename__ = 'rule_account_link'
+    rule_id = db.Column(db.Integer, db.ForeignKey('rule.id'), primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), primary_key=True)
+    is_exclusion = db.Column(db.Boolean, nullable=False, default=False)
+
+class Rule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=True)
+    keyword = db.Column(db.String(100), nullable=True)
+    condition = db.Column(db.String(20), nullable=True)
+    value = db.Column(db.Float, nullable=True)
+    category = db.Column(db.String(100), nullable=True)
+    transaction_type = db.Column(db.String(20), nullable=True)
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    is_automatic = db.Column(db.Boolean, nullable=False, default=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    accounts = db.relationship('RuleAccountLink', backref='rule', cascade="all, delete-orphan")
+    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
+    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
+
+class FinancialPeriod(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    start_date = db.Column(db.String(10), nullable=False)
+    end_date = db.Column(db.String(10), nullable=False)
+    is_closed = db.Column(db.Boolean, nullable=False, default=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class CategoryRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=True)
+    keyword = db.Column(db.String(100), nullable=True)
+    condition = db.Column(db.String(20), nullable=True)
+    value = db.Column(db.Float, nullable=True)
+    category = db.Column(db.String(100), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+
+class FixedAsset(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200))
+    purchase_date = db.Column(db.String(10), nullable=False)
+    cost = db.Column(db.Float, nullable=False)
+    useful_life = db.Column(db.Integer, nullable=False) # in years
+    salvage_value = db.Column(db.Float, nullable=False, default=0.0)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Depreciation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    fixed_asset_id = db.Column(db.Integer, db.ForeignKey('fixed_asset.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Product(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200))
+    cost = db.Column(db.Float, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Inventory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quantity = db.Column(db.Integer, nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    product = db.relationship('Product', backref='inventory_item', uselist=False)
+
+class Sale(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    product = db.relationship('Product', backref='sales')
+
+class RecurringTransaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(200))
+    amount = db.Column(db.Float, nullable=False)
+    frequency = db.Column(db.String(20), nullable=False) # daily, weekly, monthly, yearly
+    start_date = db.Column(db.String(10), nullable=False)
+    end_date = db.Column(db.String(10))
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.String(10), nullable=False)
+    description = db.Column(db.String(200))
+    amount = db.Column(db.Float, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    is_approved = db.Column(db.Boolean, nullable=False, default=False)
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    rule_modified = db.Column(db.Boolean, nullable=False, default=False)
+
+class AuditTrail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    action = db.Column(db.String(200), nullable=False)
+    user = db.relationship('Client', backref='audit_trails')
 
 # Schedule the depreciation calculation job
 @scheduler.task('cron', id='calculate_depreciation', day=1, hour=0)
@@ -151,9 +349,10 @@ def delete_transaction(transaction_id):
 
 @app.route('/unapproved')
 def unapproved_transactions():
-    transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).order_by(Transaction.date.desc()).all()
+    rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(Transaction.date.desc()).all()
+    unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(Transaction.date.desc()).all()
     accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('unapproved_transactions.html', transactions=transactions, accounts=accounts)
+    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=accounts)
 
 
 
@@ -208,6 +407,59 @@ def delete_unapproved_transactions():
     Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).delete(synchronize_session=False)
     db.session.commit()
     flash(f'{len(transaction_ids)} unapproved transactions deleted successfully.', 'success')
+    return redirect(url_for('unapproved_transactions'))
+
+
+@app.route('/run_unapproved_rules', methods=['POST'])
+def run_unapproved_rules():
+    transactions_to_update = Transaction.query.filter_by(is_approved=False, client_id=session['client_id']).all()
+    all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
+    updated_count = 0
+    for transaction in transactions_to_update:
+        applicable_rules = []
+        for rule in all_rules:
+            if not rule.accounts:
+                applicable_rules.append(rule)
+                continue
+            applicable_rules.append(rule)
+
+        for rule in applicable_rules:
+            normalized_description = ' '.join(transaction.description.lower().split())
+            normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
+
+            keyword_match = False
+            if normalized_keyword:
+                keyword_match = normalized_keyword in normalized_description
+            
+            condition_match = False
+            if rule.condition and rule.value is not None:
+                if rule.condition == 'less_than' and transaction.amount < rule.value:
+                    condition_match = True
+                elif rule.condition == 'greater_than' and transaction.amount > rule.value:
+                    condition_match = True
+                elif rule.condition == 'equals' and transaction.amount == rule.value:
+                    condition_match = True
+
+            apply_rule = False
+            if rule.keyword and (rule.condition and rule.value is not None):
+                if keyword_match and condition_match:
+                    apply_rule = True
+            elif rule.keyword:
+                if keyword_match:
+                    apply_rule = True
+            elif rule.condition and rule.value is not None:
+                if condition_match:
+                    apply_rule = True
+
+            if apply_rule:
+                if rule.debit_account_id:
+                    transaction.debit_account_id = rule.debit_account_id
+                if rule.credit_account_id:
+                    transaction.credit_account_id = rule.credit_account_id
+                transaction.rule_modified = True
+                updated_count += 1
+    db.session.commit()
+    flash(f'{updated_count} transactions updated successfully based on rules.', 'success')
     return redirect(url_for('unapproved_transactions'))
 
 
@@ -411,7 +663,7 @@ def dashboard():
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str,
-        JournalEntry.category != None,
+        JournalEntry.category is not None,
         JournalEntry.category != ''
     ).group_by(JournalEntry.category)
 
@@ -429,7 +681,7 @@ def dashboard():
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str,
-        JournalEntry.category != None,
+        JournalEntry.category is not None,
         JournalEntry.category != ''
     ).group_by(JournalEntry.category)
 
@@ -522,7 +774,7 @@ def full_pie_chart_expenses():
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date,
         JournalEntry.date <= end_date,
-        JournalEntry.category != None,
+        JournalEntry.category is not None,
         JournalEntry.category != ''
     ).group_by(JournalEntry.category)
 
@@ -546,7 +798,7 @@ def full_pie_chart_income():
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date,
         JournalEntry.date <= end_date,
-        JournalEntry.category != None,
+        JournalEntry.category is not None,
         JournalEntry.category != ''
     ).group_by(JournalEntry.category)
 
@@ -766,7 +1018,7 @@ def bulk_actions():
         db.session.commit()
         flash(f'{len(transaction_ids)} transactions unlocked successfully.', 'success')
     elif action == 'apply_rules':
-        transactions_to_update = Transaction.query.filter(Transaction.id.in_(entry_ids), Transaction.client_id == session['client_id']).all()
+        transactions_to_update = Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).all()
         all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
         updated_count = 0
         for transaction in transactions_to_update:
@@ -943,7 +1195,7 @@ def import_csv():
             try:
                 date = normalize_date(row[template.date_col])
                 description = row[template.description_col]
-                notes = row[template.notes_col] if template.notes_col is not None else None
+                row[template.notes_col] if template.notes_col is not None else None
                 
                 if template.amount_col is not None:
                     amount = float(row[template.amount_col])
@@ -1177,8 +1429,8 @@ def export_balance_sheet():
     for a in assets:
         cw.writerow([a.name, a.balance])
     cw.writerow(['Liabilities', ''])
-    for l in liabilities:
-        cw.writerow([l.name, l.balance])
+    for liability in liabilities:
+        cw.writerow([liability.name, liability.balance])
     cw.writerow(['Equity', ''])
     for e in equity:
         cw.writerow([e.name, e.balance])

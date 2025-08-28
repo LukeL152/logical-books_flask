@@ -1,6 +1,6 @@
 import pytest
 from app import app, db, Client
-from flask import get_flashed_messages
+
 
 @pytest.fixture
 def client():
