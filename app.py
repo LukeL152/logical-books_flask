@@ -1286,7 +1286,21 @@ def balance_sheet():
 
     total_assets = sum(item['balance'] for item in asset_data)
     total_liabilities = sum(item['balance'] for item in liability_data)
-    total_equity = sum(item['balance'] for item in equity_data)
+    total_equity_from_accounts = sum(item['balance'] for item in equity_data)
+
+    # Calculate Net Income to be added to Equity
+    revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
+    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
+
+    revenue_data = get_account_tree(revenue_accounts)
+    expense_data = get_account_tree(expense_accounts)
+
+    total_revenue = sum(item['balance'] for item in revenue_data)
+    total_expenses = sum(item['balance'] for item in expense_data)
+    net_income = total_revenue - total_expenses
+
+    # Correct total equity includes net income
+    total_equity = total_equity_from_accounts + net_income
 
     return render_template('balance_sheet.html', 
                            asset_data=asset_data, 
