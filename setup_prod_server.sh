@@ -67,6 +67,11 @@ SECRET_KEY=$(python3 -c 'import os; print(os.urandom(24).hex())')
 echo "SECRET_KEY generated."
 
 # --- 6. Create Gunicorn Systemd Service ---
+# Note: The service runs as Group=www-data. For the application to be able to
+# write to the SQLite database, this group may need write permissions to the
+# instance folder, e.g., by running:
+# sudo chown -R :www-data instance && sudo chmod -R g+w instance
+
 echo "Creating Gunicorn Systemd service file..."
 sudo bash -c "cat > /etc/systemd/system/$APP_NAME.service <<EOF
 [Unit]

@@ -15,9 +15,8 @@ if [ ! -d "venv" ]; then
     echo "Creating new virtual environment..."
     python3 -m venv venv
 fi
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+./venv/bin/python3 -m pip install --upgrade pip
+./venv/bin/python3 -m pip install -r requirements.txt
 echo "Python environment setup complete."
 
 # 3. Database Backup
@@ -37,4 +36,4 @@ echo "4. Running database migrations..."
 echo "Database migrations complete."
 
 echo "--- Update Complete ---"
-echo "You can now run the application using ./run_prod.sh to test the changes."
+echo "You should now restart the application service using: sudo systemctl restart logical-books"
