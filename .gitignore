@@ -21,3 +21,5 @@ instance/
 GEMINI.md
 .gemini/
 /backups
+
+gha-creds-*.json
