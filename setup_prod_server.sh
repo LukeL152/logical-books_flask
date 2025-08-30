@@ -44,20 +44,7 @@ echo "Python environment setup complete."
 echo "Running database migrations..."
 flask db upgrade
 
-# --- 4.5. Database Backup ---
-echo "Creating database backup..."
-mkdir -p "$APP_DIR/backups"
-TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
-db_path="$APP_DIR/instance/bookkeeping.db"
-backup_path="$APP_DIR/backups/bookkeeping.db.$TIMESTAMP"
-if [ -f "$db_path" ]; then
-    cp "$db_path" "$backup_path"
-else
-    echo "Database not found, skipping backup."
-fi
 
-# Prune old backups (older than 30 days)
-find "$APP_DIR/backups" -type f -mtime +30 -name '*.db.*' -delete
 
 echo "Database migrations complete."
 

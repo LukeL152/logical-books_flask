@@ -5,12 +5,23 @@ set -e
 
 echo "--- Starting Update Process ---"
 
-# 1. Pull latest changes
-echo "1. Pulling latest changes from git..."
+# 1. Database Backup
+echo "1. Creating database backup..."
+if [ -f "bookkeeping.db" ]; then
+    mkdir -p backups
+    TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
+    cp bookkeeping.db "backups/bookkeeping.db.$TIMESTAMP"
+    echo "Backup created at backups/bookkeeping.db.$TIMESTAMP"
+else
+    echo "Database not found, skipping backup."
+fi
+
+# 2. Pull latest changes
+echo "2. Pulling latest changes from git..."
 git pull
 
-# 2. Python Environment Setup
-echo "2. Setting up Python virtual environment..."
+# 3. Python Environment Setup
+echo "3. Setting up Python virtual environment..."
 if [ ! -d "venv" ]; then
     echo "Creating new virtual environment..."
     python3 -m venv venv
@@ -18,17 +29,6 @@ fi
 ./venv/bin/python3 -m pip install --upgrade pip
 ./venv/bin/python3 -m pip install -r requirements.txt
 echo "Python environment setup complete."
-
-# 3. Database Backup
-echo "3. Creating database backup..."
-if [ -f "instance/bookkeeping.db" ]; then
-    mkdir -p backups
-    TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
-    cp instance/bookkeeping.db "backups/bookkeeping.db.$TIMESTAMP"
-    echo "Backup created at backups/bookkeeping.db.$TIMESTAMP"
-else
-    echo "Database not found, skipping backup."
-fi
 
 # 4. Database Migration
 echo "4. Running database migrations..."
