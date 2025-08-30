@@ -992,73 +992,62 @@ def toggle_lock(entry_id):
 
 @app.route('/bulk_actions', methods=['POST'])
 def bulk_actions():
-    print("--- BULK ACTIONS ROUTE REACHED ---")
-    transaction_ids = request.form.getlist('transaction_ids')
+    entry_ids = request.form.getlist('entry_ids')
     action = request.form['action']
 
-    if not transaction_ids:
-        flash('No transactions selected.', 'warning')
-        return redirect(url_for('transactions'))
+    if not entry_ids:
+        flash('No entries selected.', 'warning')
+        return redirect(url_for('journal'))
 
     if action == 'delete':
-        Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).delete(synchronize_session=False)
+        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).delete(synchronize_session=False)
         db.session.commit()
-        flash(f'{len(transaction_ids)} transactions deleted successfully.', 'success')
+        flash(f'{len(entry_ids)} entries deleted successfully.', 'success')
     elif action == 'update_type':
-        # This action is no longer directly applicable to Transactions in the same way
-        # as Transactions don't have a 'transaction_type' field directly.
-        # This would need to be re-thought in a full GAAP implementation.
-        flash('Update type action is not applicable to transactions.', 'warning')
+        transaction_type = request.form.get('transaction_type')
+        if not transaction_type:
+            flash('No transaction type selected.', 'warning')
+            return redirect(url_for('journal'))
+        
+        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'transaction_type': transaction_type}, synchronize_session=False)
+        db.session.commit()
+        flash(f'{len(entry_ids)} entries updated successfully.', 'success')
     elif action == 'lock':
-        Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
+        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
         db.session.commit()
-        flash(f'{len(transaction_ids)} transactions locked successfully.', 'success')
+        flash(f'{len(entry_ids)} entries locked successfully.', 'success')
     elif action == 'unlock':
-        Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
+        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
         db.session.commit()
-        flash(f'{len(transaction_ids)} transactions unlocked successfully.', 'success')
+        flash(f'{len(entry_ids)} entries unlocked successfully.', 'success')
     elif action == 'apply_rules':
-        transactions_to_update = Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).all()
+        entries_to_update = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
         all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
         updated_count = 0
-        for transaction in transactions_to_update:
+        for entry in entries_to_update:
             applicable_rules = []
             for rule in all_rules:
                 if not rule.accounts:
                     applicable_rules.append(rule)
                     continue
-
-                # For now, rules are applied to transactions regardless of account
-                # This will be updated when we implement more complex transaction types
                 applicable_rules.append(rule)
 
-            print(f"DEBUG: Rules loaded for manual application: {[(r.name, r.keyword, r.condition, r.value, r.is_automatic) for r in applicable_rules]}")
-            print(f"DEBUG: Processing Transaction ID: {transaction.id}, Description: '{transaction.description}', Amount: {transaction.amount}")
-            
-            # Apply all matching rules
             for rule in applicable_rules:
-                # Normalize description and keyword for robust matching
-                normalized_description = ' '.join(transaction.description.lower().split())
+                normalized_description = ' '.join(entry.description.lower().split())
                 normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
-
-                print(f"DEBUG: Checking rule: {rule.name} | {rule.keyword} | {rule.condition} {rule.value} (Automatic: {rule.is_automatic})")
-                print(f"DEBUG: Normalized Description: '{normalized_description}'")
-                print(f"DEBUG: Normalized Keyword: '{normalized_keyword}'")
 
                 keyword_match = False
                 if normalized_keyword:
                     keyword_match = normalized_keyword in normalized_description
-                print(f"DEBUG: Keyword Match: {keyword_match}")
                 
                 condition_match = False
                 if rule.condition and rule.value is not None:
-                    if rule.condition == 'less_than' and transaction.amount < rule.value:
+                    if rule.condition == 'less_than' and entry.amount < rule.value:
                         condition_match = True
-                    elif rule.condition == 'greater_than' and transaction.amount > rule.value:
+                    elif rule.condition == 'greater_than' and entry.amount > rule.value:
                         condition_match = True
-                    elif rule.condition == 'equals' and transaction.amount == rule.value:
+                    elif rule.condition == 'equals' and entry.amount == rule.value:
                         condition_match = True
-                print(f"DEBUG: Condition Match: {condition_match}")
 
                 apply_rule = False
                 if rule.keyword and (rule.condition and rule.value is not None):
@@ -1070,18 +1059,19 @@ def bulk_actions():
                 elif rule.condition and rule.value is not None:
                     if condition_match:
                         apply_rule = True
-                print(f"DEBUG: Apply Rule: {apply_rule}")
 
                 if apply_rule:
-                    # For now, we're just updating the transaction's category
-                    # In a real GAAP implementation, rules would influence how journal entries are generated
                     if rule.category:
-                        transaction.category = rule.category
+                        entry.category = rule.category
+                    if rule.transaction_type:
+                        entry.transaction_type = rule.transaction_type
+                    if rule.debit_account_id:
+                        entry.debit_account_id = rule.debit_account_id
+                    if rule.credit_account_id:
+                        entry.credit_account_id = rule.credit_account_id
                     updated_count += 1
-                    print(f"DEBUG: Transaction Updated! Final Category: {transaction.category}")
-
         db.session.commit()
-        flash(f'{updated_count} transactions updated successfully based on rules.', 'success')
+        flash(f'{updated_count} entries updated successfully based on rules.', 'success')
     
     return redirect(url_for('journal'))
 
@@ -1302,13 +1292,17 @@ def balance_sheet():
     # Correct total equity includes net income
     total_equity = total_equity_from_accounts + net_income
 
+    # Check if books are balanced
+    is_balanced = round(total_assets, 2) == round(total_liabilities + total_equity, 2)
+
     return render_template('balance_sheet.html', 
                            asset_data=asset_data, 
                            liability_data=liability_data, 
                            equity_data=equity_data, 
                            total_assets=total_assets, 
                            total_liabilities=total_liabilities, 
-                           total_equity=total_equity)
+                           total_equity=total_equity,
+                           is_balanced=is_balanced)
 
 @app.route('/statement_of_cash_flows')
 def statement_of_cash_flows():
@@ -1642,15 +1636,15 @@ def edit_transaction_rule(rule_id):
             include_set -= exclude_set
 
         # Clear existing account links
-        rule.accounts.clear()
+        RuleAccountLink.query.filter_by(rule_id=rule_id).delete()
 
         for account_id in include_set:
-            link = RuleAccountLink(account_id=account_id, is_exclusion=False)
-            rule.accounts.append(link)
+            link = RuleAccountLink(rule_id=rule.id, account_id=account_id, is_exclusion=False)
+            db.session.add(link)
 
         for account_id in exclude_set:
-            link = RuleAccountLink(account_id=account_id, is_exclusion=True)
-            rule.accounts.append(link)
+            link = RuleAccountLink(rule_id=rule.id, account_id=account_id, is_exclusion=True)
+            db.session.add(link)
 
         db.session.commit()
         flash('Transaction rule updated successfully.', 'success')

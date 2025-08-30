@@ -40,7 +40,8 @@ The application follows a typical Model-View-Controller (MVC) pattern, though Fl
     *   HTML files that define the user interface.
     *   `base.html`: Provides a common layout for all pages.
     *   Specific templates like `journal.html`, `accounts.html`, `balance_sheet.html`, `rules.html`, `import.html`, etc., display and allow interaction with different aspects of the bookkeeping system.
-*   **`run.sh`:** A simple shell script to activate the virtual environment and start the Flask development server.
+*   **`run_dev.sh`:** A simple shell script to activate the virtual environment and start the Flask development server.
+*   **`create_migration.sh`:** A helper script to safely create new database migration files, ensuring a linear history.
 
 ### Data Flow Example (e.g., Adding a Journal Entry)
 
@@ -71,6 +72,37 @@ The project leverages a set of established and widely-used technologies:
 *   **Virtual Environment:** `venv`
 *   **Frontend:** HTML5, CSS3 (with `static/style.css`)
 *   **Scheduler:** APScheduler
+
+## 2.5. Development Workflow Best Practices and Scripting Conventions
+
+To ensure consistency, robustness, and avoid common issues (like database migration conflicts), please adhere to the following practices:
+
+### Scripting Conventions
+
+All shell scripts (`.sh` files) in the project root now use explicit virtual environment paths. This means you will see commands like `./venv/bin/python3 -m flask` instead of just `flask` after sourcing the virtual environment. This makes scripts more robust and less prone to environment-related issues.
+
+### Database Migration Workflow
+
+**NEVER run `flask db migrate` directly.** Always use the `create_migration.sh` helper script.
+
+1.  **Sync your environment:** Before making any model changes, ensure your local feature branch is up-to-date with the latest `main` branch by running `git pull origin main`.
+2.  **Apply pending migrations:** Ensure your local database schema is up-to-date by running `./run_dev.sh` (which includes `flask db upgrade`).
+3.  **Make your model changes** in `app.py` or other relevant files.
+4.  **Create the migration:** Instead of `flask db migrate`, use:
+    ```bash
+    ./create_migration.sh "Your descriptive migration message"
+    ```
+    This script will automatically pull latest changes, upgrade your DB, and then generate the new migration file.
+5.  **Commit the result:** The script will generate a new migration file in the `migrations/versions` directory. Commit this new file along with your model changes.
+
+This process guarantees that all migrations are created sequentially, avoiding conflicts when merging branches or deploying to production.
+
+### Production Deployment and Updates
+
+*   **Initial Setup:** Use `setup_prod_server.sh` for the initial deployment of the application to a production server. This script handles system dependencies, repository cloning, virtual environment setup, database migrations, and `systemd` service configuration.
+*   **Updating:** Use `update.sh` to update an existing production deployment. This script pulls latest changes, updates dependencies, runs migrations, and instructs you to restart the `systemd` service.
+*   **Running the Production Server:** The production server is managed by `systemd`. Do **NOT** run `run_prod.sh` (it has been removed). Instead, use `sudo systemctl start logical-books` (or `restart`, `stop`, `status`).
+*   **File Permissions:** If you encounter `read-only database` errors in production, ensure the `instance` directory (where `bookkeeping.db` resides) has write permissions for the user/group running the Gunicorn service (typically `www-data`). You might need to run: `sudo chown -R :www-data /var/www/logical-books/instance && sudo chmod -R g+w /var/www/logical-books/instance`
 
 ## 3. Roadmap to a Production-Ready Bookkeeping Website
 
@@ -124,7 +156,7 @@ Transforming Logical Books into a robust, scalable, and secure production-grade 
     *   **Action:** Dockerize the application (create a `Dockerfile`) for consistent deployment across environments.
     *   **Reason:** Portability, isolation, and simplified deployment.
 *   **Production WSGI Server:**
-    *   **Action:** Use a production-ready WSGI server like Gunicorn or uWSGI to serve the Flask application.
+    *   **Action:** Implemented. The application now uses Gunicorn as a production-ready WSGI server, configured via `setup_prod_server.sh`.
     *   **Reason:** Flask's built-in server is not suitable for production.
 *   **Web Server:**
     *   **Action:** Deploy behind a robust web server like Nginx or Apache for serving static files, load balancing, and acting as a reverse proxy.

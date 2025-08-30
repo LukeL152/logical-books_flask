@@ -45,14 +45,13 @@ The application uses a single SQLite database file (`bookkeeping.db`) to store a
 1.  **Installation:**
     *   Clone the repository.
     *   Create a Python virtual environment: `python3 -m venv venv`
-    *   Activate the virtual environment: `source venv/bin/activate`
-    *   Install the required packages: `pip install -r requirements.txt`
+    *   Install the required packages: `./venv/bin/python3 -m pip install -r requirements.txt`
 
 2.  **Database Setup:**
-    *   Initialize the database: `flask db upgrade`
+    *   Initialize the database: `./venv/bin/python3 -m flask db upgrade`
 
 3.  **Running the Application:**
-    *   Run the application: `./run.sh`
+    *   **Development:** `./run_dev.sh`
     *   Open your web browser and navigate to `http://127.0.0.1:5000`.
 
 ## Testing
@@ -61,9 +60,8 @@ The application includes a test suite using `pytest` to ensure core functionalit
 
 To run the tests:
 
-1.  Activate your virtual environment: `source venv/bin/activate`
-2.  Navigate to the project's root directory.
-3.  Run the tests: `python3 -m pytest`
+1.  Navigate to the project's root directory.
+2.  Run the tests: `./venv/bin/python3 -m pytest`
 
 ## Deployment to EC2 (Debian/Ubuntu)
 
@@ -76,20 +74,20 @@ Ensure your EC2 instance has SSH access and basic system updates applied.
 ### Deployment Steps
 
 1.  **Transfer the Deployment Script:**
-    Copy the `install_and_deploy.sh` script (provided separately) to your EC2 instance.
+    Copy the `setup_prod_server.sh` script (provided separately) to your EC2 instance.
 
 2.  **Update Repository URL in Script:**
-    Open `install_and_deploy.sh` and replace `https://github.com/LukeL152/logical-books_flask.git` with the actual HTTPS URL of your GitHub repository.
+    Open `setup_prod_server.sh` and replace `https://github.com/LukeL152/logical-books_flask.git` with the actual HTTPS URL of your GitHub repository.
 
-3.  **Connect to EC2 and Run Script:**
+3.  **Connect to EC2 and Run Setup Script:**
     SSH into your EC2 instance and execute the script:
 
     ```bash
     # Make the script executable
-    chmod +x install_and_deploy.sh
+    chmod +x setup_prod_server.sh
 
     # Run the deployment script
-    ./install_and_deploy.sh
+    ./setup_prod_server.sh
     ```
 
     This script will:
@@ -101,9 +99,29 @@ Ensure your EC2 instance has SSH access and basic system updates applied.
     *   Configure and enable a `systemd` service for Gunicorn to run your Flask app.
     *   Configure and enable Nginx as a reverse proxy, serving your application on port 80.
 
+### Updating an Existing Deployment
+
+To update an already deployed application, use the `update.sh` script:
+
+```bash
+# Navigate to the application directory
+cd /var/www/logical-books
+
+# Run the update script
+./update.sh
+```
+This script will pull the latest changes, update dependencies, run migrations, and instruct you to restart the systemd service.
+
 ### Accessing Your Application
 
-After the script completes successfully, your application should be accessible via your EC2 instance's public IP address in a web browser.
+After the setup or update completes successfully, your application should be accessible via your EC2 instance's public IP address in a web browser.
+
+## Recent Enhancements
+
+*   **Corrected Balance Sheet Calculation:** The Balance Sheet now accurately reflects Total Equity by including Net Income (Revenue - Expenses), ensuring your books are always balanced.
+*   **Enhanced Transaction Rule Editing:** You can now directly specify Debit and Credit accounts when creating or editing transaction rules, providing more precise automation for your journal entries.
+*   **Standardized Development Scripts:** All development and deployment scripts (`run_dev.sh`, `update.sh`, `create_migration.sh`, `setup_prod_server.sh`) have been standardized to use explicit virtual environment paths, improving robustness and consistency. The redundant `run_prod.sh` script has been removed.
+*   **New Database Migration Workflow:** A new `create_migration.sh` script has been introduced to enforce a linear and conflict-free database migration history, preventing "multiple heads" errors.
 
 ## Future Improvements
 

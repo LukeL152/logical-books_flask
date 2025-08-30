@@ -15,6 +15,17 @@
         <h1>Balance Sheet</h1>
         <a href="{{ url_for('export_balance_sheet') }}" class="btn btn-primary">Export to CSV</a>
     </div>
+
+    {% if is_balanced %}
+        <div class="alert alert-success" role="alert">
+            Books are balanced!
+        </div>
+    {% else %}
+        <div class="alert alert-danger" role="alert">
+            Books are not balanced!
+        </div>
+    {% endif %}
+
     <div class="row">
         <div class="col-md-4">
             <h2 class="h4">Assets</h2>

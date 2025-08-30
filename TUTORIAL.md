@@ -33,7 +33,7 @@ pip install -r requirements.txt
 Finally, run the application:
 
 ```bash
-./run.sh
+./run_dev.sh
 ```
 
 The application will be available at `http://127.0.0.1:5000/`.
@@ -72,11 +72,29 @@ You will need to create an import template to map the columns in your CSV file t
 
 ### Manually Adding Transactions
 
-You can also add transactions manually. To add a new transaction, click on the "Transactions" link in the navigation bar and then click the "Add Transaction" button. You will need to provide a date, a description, and an amount for the transaction.
+You can also add transactions manually. These are initially considered **unapproved transactions** and will need to be categorized into proper journal entries.
+
+To add a new transaction, click on the "Transactions" link in the navigation bar and then click the "Add Transaction" button. You will need to provide a date, a description, and an amount for the transaction.
 
 ### Approving Transactions
 
-Once you have imported or manually added transactions, you will need to approve them before they are converted into journal entries. To approve transactions, click on the "Unapproved Transactions" link in the "Journal" dropdown menu. Then, select the debit and credit accounts for each transaction and click the "Approve Selected Transactions" button.
+Once you have imported or manually added transactions, you will need to approve them before they are converted into formal, balanced journal entries. This is where you apply the double-entry bookkeeping principles.
+
+To approve transactions, click on the "Unapproved Transactions" link in the "Journal" dropdown menu. For each transaction:
+
+1.  Select the **Debit Account**: This is where the value is increasing (e.g., an Expense account for a payment, or a Cash account for income received).
+2.  Select the **Credit Account**: This is where the value is decreasing (e.g., a Cash account for a payment, or a Revenue account for income earned).
+
+After selecting the accounts, click the "Approve Selected Transactions" button. This action creates a balanced journal entry, ensuring your books remain accurate.
+
+## 4.5. Understanding Transaction Types vs. Journal Entries
+
+Logical Books uses two main concepts for recording financial activity:
+
+*   **Transactions:** These are raw, unapproved records of financial activity, often imported from bank statements or manually entered. They typically have a date, description, and amount. They are a staging area.
+*   **Journal Entries:** These are the formal, balanced records of financial activity that adhere to double-entry bookkeeping principles. Every journal entry has a debit and a credit account for the same amount, ensuring your books are always in balance.
+
+While `JournalEntry` records have a `transaction_type` field (e.g., 'income', 'expense') for filtering and reporting purposes, the true nature of the transaction (whether it's income, expense, or a transfer) is primarily determined by the **types of accounts** used in the debit and credit sides of the Journal Entry. The `transaction_type` field acts as a helpful tag for quick categorization and reporting, but the underlying double-entry is what drives the financial statements.
 
 ## 5. Journal Entries
 
@@ -165,3 +183,27 @@ Logical Books can automatically detect recurring transactions by analyzing your 
 ### Approving Recurring Transactions
 
 Once a recurring transaction has been detected, you can approve it by selecting a debit and credit account and clicking the "Approve" button. Once approved, a new `RecurringTransaction` record will be created, and a journal entry will be automatically created for the transaction on a daily, weekly, monthly, or yearly basis.
+
+## 12. Transaction Rules
+
+Transaction rules allow you to automate the categorization and account assignment of your transactions. Rules can be based on keywords, transaction amounts, and can automatically set categories, transaction types, and most importantly, the **Debit and Credit accounts** for your journal entries.
+
+### Creating and Editing Rules
+
+1.  Navigate to "Transaction Rules" from the main menu.
+2.  Click "Add Rule" or "Edit" an existing rule.
+3.  **Rule Criteria:**
+    *   **Name:** A descriptive name for your rule.
+    *   **Keyword:** A word or phrase found in the transaction description (e.g., "Starbucks", "Rent").
+    *   **Value Condition:** (Optional) Apply the rule based on the transaction amount (e.g., "Less Than", "Greater Than", "Equals" a specific value).
+4.  **Rule Actions:**
+    *   **Category:** Assign a category to the transaction.
+    *   **Set Type:** Assign a `transaction_type` (Income, Expense) for filtering.
+    *   **Debit Account:** Select the account to be debited when this rule applies (e.g., "Expenses: Office Supplies").
+    *   **Credit Account:** Select the account to be credited when this rule applies (e.g., "Assets: Checking Account").
+    *   **Automatic:** If checked, the rule will automatically apply to unapproved transactions. If unchecked, you can manually apply it.
+5.  **Account Inclusion/Exclusion:** You can specify specific accounts for which this rule should or should not apply.
+
+### Applying Rules
+
+Rules can be applied automatically (if marked as "Automatic") or manually from the "Unapproved Transactions" page.

@@ -2,7 +2,7 @@
 {% block content %}
     <h1 class="mb-4">Edit Rule</h1>
 
-    <form action="{{ url_for('edit_rule', rule_id=rule.id) }}" method="post" class="mb-4 p-3 border rounded">
+    <form action="{{ url_for('edit_transaction_rule', rule_id=rule.id) }}" method="post" class="mb-4 p-3 border rounded">
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label for="name" class="form-label">Rule Name</label>
@@ -28,6 +28,24 @@
             <div class="col-md-2">
                 <label for="category" class="form-label">Category (optional)</label>
                 <input type="text" id="category" name="category" class="form-control" value="{{ rule.category or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="debit_account_id" class="form-label">Debit Account (optional)</label>
+                <select id="debit_account_id" name="debit_account_id" class="form-select">
+                    <option value="">-- No Change --</option>
+                    {% for account in accounts %}
+                        <option value="{{ account.id }}" {% if rule.debit_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="credit_account_id" class="form-label">Credit Account (optional)</label>
+                <select id="credit_account_id" name="credit_account_id" class="form-select">
+                    <option value="">-- No Change --</option>
+                    {% for account in accounts %}
+                        <option value="{{ account.id }}" {% if rule.credit_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="col-md-2">
                 <label for="transaction_type" class="form-label">Set Type (optional)</label>
