@@ -1094,6 +1094,7 @@ def add_template_for_account(account_id):
     # Otherwise, create a new blank template and redirect to edit
     new_template = ImportTemplate(
         account_id=account_id,
+        client_id=session['client_id'],
         date_col=0,
         description_col=1,
     )
