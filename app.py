@@ -158,7 +158,11 @@ class CategoryRule(db.Model):
     condition = db.Column(db.String(20), nullable=True)
     value = db.Column(db.Float, nullable=True)
     category = db.Column(db.String(100), nullable=False)
+    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
+    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
 
 
 class FixedAsset(db.Model):
@@ -411,6 +415,44 @@ def delete_unapproved_transactions():
     return redirect(url_for('unapproved_transactions'))
 
 
+def run_category_rules(transactions):
+    all_rules = CategoryRule.query.filter_by(client_id=session['client_id']).order_by(CategoryRule.id).all()
+    for transaction in transactions:
+        for rule in all_rules:
+            normalized_description = ' '.join(transaction.description.lower().split())
+            normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
+
+            keyword_match = False
+            if normalized_keyword:
+                keyword_match = normalized_keyword in normalized_description
+            
+            condition_match = False
+            if rule.condition and rule.value is not None:
+                if rule.condition == 'less_than' and transaction.amount < rule.value:
+                    condition_match = True
+                elif rule.condition == 'greater_than' and transaction.amount > rule.value:
+                    condition_match = True
+                elif rule.condition == 'equals' and transaction.amount == rule.value:
+                    condition_match = True
+
+            apply_rule = False
+            if rule.keyword and (rule.condition and rule.value is not None):
+                if keyword_match and condition_match:
+                    apply_rule = True
+            elif rule.keyword:
+                if keyword_match:
+                    apply_rule = True
+            elif rule.condition and rule.value is not None:
+                if condition_match:
+                    apply_rule = True
+
+            if apply_rule:
+                if rule.debit_account_id:
+                    transaction.debit_account_id = rule.debit_account_id
+                if rule.credit_account_id:
+                    transaction.credit_account_id = rule.credit_account_id
+                transaction.rule_modified = True
+
 @app.route('/run_unapproved_rules', methods=['POST'])
 def run_unapproved_rules():
     transactions_to_update = Transaction.query.filter_by(is_approved=False, client_id=session['client_id']).all()
@@ -459,6 +501,7 @@ def run_unapproved_rules():
                     transaction.credit_account_id = rule.credit_account_id
                 transaction.rule_modified = True
                 updated_count += 1
+    run_category_rules(transactions_to_update)
     db.session.commit()
     flash(f'{updated_count} transactions updated successfully based on rules.', 'success')
     return redirect(url_for('unapproved_transactions'))
@@ -1182,7 +1225,8 @@ def import_csv():
 
         if template.has_header:
             next(csv_reader)
-
+        
+        transactions = []
         for row in csv_reader:
             try:
                 date = normalize_date(row[template.date_col])
@@ -1203,10 +1247,12 @@ def import_csv():
                     date=date, description=description, amount=amount, client_id=session['client_id']
                 )
                 db.session.add(new_transaction)
+                transactions.append(new_transaction)
             except (ValueError, IndexError) as e:
                 flash(f'Error processing row: {row}. Error: {e}', 'danger')
                 db.session.rollback()
                 return redirect(url_for('journal'))
+        run_category_rules(transactions)
 
     db.session.commit()
     flash(f'{len(files)} file(s) imported successfully.', 'success')
@@ -1481,7 +1527,8 @@ def category_rules():
         return redirect(url_for('category_rules'))
     else:
         rules = CategoryRule.query.filter_by(client_id=session['client_id']).all()
-        return render_template('category_rules.html', rules=rules)
+        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+        return render_template('category_rules.html', rules=rules, accounts=accounts)
 
 @app.route('/add_transaction_rule', methods=['POST'])
 def add_transaction_rule():
@@ -1552,6 +1599,8 @@ def add_category_rule():
     condition = request.form.get('condition')
     value_str = request.form.get('value')
     category = request.form.get('category')
+    debit_account_id = request.form.get('debit_account_id')
+    credit_account_id = request.form.get('credit_account_id')
 
     # Basic validation
     if not keyword and not (condition and value_str):
@@ -1570,6 +1619,8 @@ def add_category_rule():
         condition=condition,
         value=value,
         category=category,
+        debit_account_id=debit_account_id if debit_account_id else None,
+        credit_account_id=credit_account_id if credit_account_id else None,
         client_id=session['client_id']
     )
     db.session.add(new_rule)
@@ -1666,6 +1717,8 @@ def edit_category_rule(rule_id):
         rule.condition = request.form.get('condition')
         value_str = request.form.get('value')
         rule.category = request.form.get('category')
+        rule.debit_account_id = request.form.get('debit_account_id')
+        rule.credit_account_id = request.form.get('credit_account_id')
 
         # Basic validation
         if not rule.keyword and not (rule.condition and value_str):
@@ -1682,7 +1735,8 @@ def edit_category_rule(rule_id):
         flash('Category rule updated successfully.', 'success')
         return redirect(url_for('category_rules'))
     else:
-        return render_template('edit_category_rule.html', rule=rule)
+        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+        return render_template('edit_category_rule.html', rule=rule, accounts=accounts)
 
 
 @app.route('/products')
