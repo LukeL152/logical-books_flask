@@ -104,6 +104,7 @@ class Document(db.Model):
 class ImportTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False, unique=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     date_col = db.Column(db.Integer, nullable=False)
     description_col = db.Column(db.Integer, nullable=False)
     amount_col = db.Column(db.Integer)
