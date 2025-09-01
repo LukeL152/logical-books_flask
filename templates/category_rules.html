@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import render_account_options %}
 
 {% block content %}
 <h1 class="mb-4">Category Rules</h1>
@@ -37,18 +38,14 @@
             <label for="debit_account_id" class="form-label">Debit Account</label>
             <select id="debit_account_id" name="debit_account_id" class="form-select">
                 <option value="">None</option>
-                {% for account in accounts %}
-                <option value="{{ account.id }}">{{ account.name }}</option>
-                {% endfor %}
+                {{ render_account_options(accounts) }}
             </select>
         </div>
         <div class="col-md-6">
             <label for="credit_account_id" class="form-label">Credit Account</label>
             <select id="credit_account_id" name="credit_account_id" class="form-select">
                 <option value="">None</option>
-                {% for account in accounts %}
-                <option value="{{ account.id }}">{{ account.name }}</option>
-                {% endfor %}
+                {{ render_account_options(accounts) }}
             </select>
         </div>
     </div>

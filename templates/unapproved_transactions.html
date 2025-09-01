@@ -1,5 +1,6 @@
 
 {% extends 'base.html' %}
+{% from '_macros.html' import render_account_options %}
 
 {% block content %}
 <h1 class="mb-4">Unapproved Transactions</h1>
@@ -32,16 +33,12 @@
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control">
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}" {% if transaction.debit_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
-                        {% endfor %}
+                        {{ render_account_options(accounts, selected_id=transaction.debit_account_id) }}
                     </select>
                 </td>
                 <td>
                     <select name="credit_account_{{ transaction.id }}" class="form-control">
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}" {% if transaction.credit_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
-                        {% endfor %}
+                        {{ render_account_options(accounts, selected_id=transaction.credit_account_id) }}
                     </select>
                 </td>
                 <td>
@@ -76,16 +73,12 @@
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control">
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}" {% if transaction.debit_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
-                        {% endfor %}
+                        {{ render_account_options(accounts, selected_id=transaction.debit_account_id) }}
                     </select>
                 </td>
                 <td>
                     <select name="credit_account_{{ transaction.id }}" class="form-control">
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}" {% if transaction.credit_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
-                        {% endfor %}
+                        {{ render_account_options(accounts, selected_id=transaction.credit_account_id) }}
                     </select>
                 </td>
                 <td>

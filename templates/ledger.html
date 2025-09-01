@@ -1,12 +1,12 @@
 {% extends "base.html" %}
+{% from '_macros.html' import render_account_row %}
 
-{% macro render_account_row(account, level=0) %}
-    <tr>
-        <td style="padding-left: {{ level * 25 }}px;">{{ account.name }}</td>
-        <td class="text-end">{{ "%.2f"|format(account.balance) }}</td>
-    </tr>
-    {% for child in account.children %}
-        {{ render_account_row(child, level + 1) }}
+{% macro render_accounts(accounts, level=0) %}
+    {% for account in accounts %}
+        {{ render_account_row(account, level) }}
+        {% if account.children %}
+            {{ render_accounts(account.children, level + 1) }}
+        {% endif %}
     {% endfor %}
 {% endmacro %}
 

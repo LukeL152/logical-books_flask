@@ -356,8 +356,8 @@ def delete_transaction(transaction_id):
 def unapproved_transactions():
     rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(Transaction.date.desc()).all()
     unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(Transaction.date.desc()).all()
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=accounts)
+    account_choices = get_account_choices(session['client_id'])
+    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
 
 
 
@@ -856,8 +856,8 @@ def full_pie_chart_income():
 @app.route('/accounts')
 def accounts():
     accounts = Account.query.filter_by(client_id=session['client_id'], parent_id=None).order_by(Account.name).all()
-    all_accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('accounts.html', accounts=accounts, all_accounts=all_accounts)
+    account_choices = get_account_choices(session['client_id'])
+    return render_template('accounts.html', accounts=accounts, account_choices=account_choices)
 
 @app.route('/add_account', methods=['POST'])
 def add_account():
@@ -916,8 +916,8 @@ def edit_account(account_id):
         flash('Account updated successfully.', 'success')
         return redirect(url_for('accounts'))
     else:
-        all_accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('edit_account.html', account=account, all_accounts=all_accounts)
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('edit_account.html', account=account, account_choices=account_choices)
 
 @app.route('/delete_account/<int:account_id>')
 def delete_account(account_id):
@@ -973,9 +973,9 @@ def journal():
         query = query.order_by(sort_column.desc())
 
     entries = query.all()
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    account_choices = get_account_choices(session['client_id'])
     
-    return render_template('journal.html', entries=entries, accounts=accounts, filters=filters)
+    return render_template('journal.html', entries=entries, accounts=account_choices, filters=filters)
 
 @app.route('/add_entry', methods=['POST'])
 def add_entry():
@@ -1011,8 +1011,8 @@ def edit_entry(entry_id):
         flash('Journal entry updated successfully.', 'success')
         return redirect(url_for('journal'))
     else:
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('edit_entry.html', entry=entry, accounts=accounts)
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('edit_entry.html', entry=entry, accounts=account_choices)
 
 @app.route('/delete_entry/<int:entry_id>')
 def delete_entry(entry_id):
@@ -1121,8 +1121,10 @@ def bulk_actions():
 
 @app.route('/import', methods=['GET'])
 def import_page():
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('import.html', accounts=accounts)
+    account_choices = get_account_choices(session['client_id'])
+    accounts = Account.query.filter_by(client_id=session['client_id']).all()
+    account_map = {account.id: account for account in accounts}
+    return render_template('import.html', accounts=account_choices, account_map=account_map)
 
 @app.route('/add_template_for_account/<int:account_id>')
 def add_template_for_account(account_id):
@@ -1259,6 +1261,17 @@ def import_csv():
     return redirect(url_for('journal'))
 
 
+
+def get_account_choices(client_id):
+    def _get_accounts_recursive(parent_id, level):
+        accounts = Account.query.filter_by(client_id=client_id, parent_id=parent_id).order_by(Account.name).all()
+        choices = []
+        for account in accounts:
+            choices.append((account.id, account.name, int(level)))
+            choices.extend(_get_accounts_recursive(account.id, level + 1))
+        return choices
+
+    return _get_accounts_recursive(None, 0)
 
 def get_account_and_children_ids(account):
     account_ids = [account.id]
@@ -1512,8 +1525,8 @@ def transaction_rules():
         return redirect(url_for('transaction_rules'))
     else:
         rules = Rule.query.filter_by(client_id=session['client_id']).all()
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('transaction_rules.html', rules=rules, accounts=accounts)
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('transaction_rules.html', rules=rules, accounts=account_choices)
 
 @app.route('/category_rules', methods=['GET', 'POST'])
 def category_rules():
@@ -1527,8 +1540,8 @@ def category_rules():
         return redirect(url_for('category_rules'))
     else:
         rules = CategoryRule.query.filter_by(client_id=session['client_id']).all()
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('category_rules.html', rules=rules, accounts=accounts)
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('category_rules.html', rules=rules, accounts=account_choices)
 
 @app.route('/add_transaction_rule', methods=['POST'])
 def add_transaction_rule():
@@ -1703,8 +1716,8 @@ def edit_transaction_rule(rule_id):
         flash('Transaction rule updated successfully.', 'success')
         return redirect(url_for('transaction_rules'))
     else:
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('edit_rule.html', rule=rule, accounts=accounts)
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('edit_rule.html', rule=rule, accounts=account_choices)
 
 @app.route('/edit_category_rule/<int:rule_id>', methods=['GET', 'POST'])
 def edit_category_rule(rule_id):
@@ -1735,8 +1748,8 @@ def edit_category_rule(rule_id):
         flash('Category rule updated successfully.', 'success')
         return redirect(url_for('category_rules'))
     else:
-        accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-        return render_template('edit_category_rule.html', rule=rule, accounts=accounts)
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('edit_category_rule.html', rule=rule, accounts=account_choices)
 
 
 @app.route('/products')
@@ -1851,7 +1864,7 @@ def accruals():
 
 @app.route('/add_accrual', methods=['GET', 'POST'])
 def add_accrual():
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    account_choices = get_account_choices(session['client_id'])
     if request.method == 'POST':
         date = request.form['date']
         description = request.form['description']
@@ -1873,13 +1886,13 @@ def add_accrual():
 
         flash('Accrual added successfully.', 'success')
         return redirect(url_for('accruals'))
-    return render_template('add_accrual.html', accounts=accounts)
+    return render_template('add_accrual.html', accounts=account_choices)
 
 @app.route('/recurring_transactions')
 def recurring_transactions():
     recurring_transactions = detect_recurring_transactions()
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('recurring_transactions.html', recurring_transactions=recurring_transactions, accounts=accounts)
+    account_choices = get_account_choices(session['client_id'])
+    return render_template('recurring_transactions.html', recurring_transactions=recurring_transactions, accounts=account_choices)
 
 @app.route('/approve_recurring_transaction', methods=['POST'])
 def approve_recurring_transaction():
