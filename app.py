@@ -1245,8 +1245,10 @@ def import_csv():
                 if template.negate_amount:
                     amount = -amount
 
+                category = row[template.category_col] if template.category_col is not None else None
+
                 new_transaction = Transaction(
-                    date=date, description=description, amount=amount, client_id=session['client_id']
+                    date=date, description=description, amount=amount, category=category, client_id=session['client_id']
                 )
                 db.session.add(new_transaction)
                 transactions.append(new_transaction)
