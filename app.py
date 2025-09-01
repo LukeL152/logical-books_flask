@@ -4,6 +4,7 @@ from flask_migrate import Migrate
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_apscheduler import APScheduler
+from sqlalchemy import func
 import csv
 import io
 from datetime import datetime, timedelta
@@ -91,6 +92,7 @@ class JournalEntry(db.Model):
     reversal_date = db.Column(db.String(10), nullable=True)
     status = db.Column(db.String(20), nullable=False, default='posted') # posted, voided
     transaction_type = db.Column(db.String(20), nullable=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'))
     debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
     credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
     documents = db.relationship('Document', backref='journal_entry', cascade="all, delete-orphan")
@@ -348,6 +350,18 @@ def delete_transaction(transaction_id):
     flash('Transaction deleted successfully.', 'success')
     return redirect(url_for('transactions'))
 
+@app.route('/delete_transactions', methods=['POST'])
+def delete_transactions():
+    transaction_ids = request.form.getlist('transaction_ids')
+    if not transaction_ids:
+        flash('No transactions selected.', 'warning')
+        return redirect(url_for('transactions'))
+
+    Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f'{len(transaction_ids)} transactions deleted successfully.', 'success')
+    return redirect(url_for('transactions'))
+
 @app.route('/unapproved')
 def unapproved_transactions():
     rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(Transaction.date.desc()).all()
@@ -379,6 +393,7 @@ def approve_transactions():
             credit_account_id=credit_account_id,
             amount=abs(transaction.amount),
             category=transaction.category,
+            transaction_id=transaction.id,
             client_id=session['client_id']
         )
         db.session.add(new_entry)
@@ -997,6 +1012,21 @@ def delete_entry(entry_id):
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
     log_audit(f'Deleted journal entry: {entry.description}')
+    if entry.transaction_id:
+        transaction = Transaction.query.get(entry.transaction_id)
+        if transaction:
+            db.session.delete(transaction)
+    else:
+        # Try to find the transaction by matching fields for old entries
+        transaction = Transaction.query.filter(
+            Transaction.client_id == session['client_id'],
+            Transaction.date == entry.date,
+            Transaction.description == entry.description,
+            func.abs(Transaction.amount) == entry.amount
+        ).first()
+        if transaction:
+            db.session.delete(transaction)
+
     db.session.delete(entry)
     db.session.commit()
     flash('Journal entry deleted successfully.', 'success')
