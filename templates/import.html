@@ -39,8 +39,8 @@
         <tbody>
             {% for account_id, account_name, level in accounts %}
             <tr>
-                <td style="padding-left: {{ level * 25 }}px;">
-                    {{ '&nbsp;&nbsp;' * level|int * 2 | safe }}&#x2514; {{ account_name }}
+                <td class="indent-{{ level }}">
+                    &#x2514; {{ account_name }}
                 </td>
                 <td>
                     {% set template = account_map[account_id].import_template %}

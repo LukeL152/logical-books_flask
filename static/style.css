@@ -1,4 +1,3 @@
-
 body {
     font-family: sans-serif;
     margin: 2em;
@@ -17,3 +16,10 @@ th, td {
 th {
     background-color: #f4f4f4;
 }
+
+.indent-0 { padding-left: 0px; }
+.indent-1 { padding-left: 25px; }
+.indent-2 { padding-left: 50px; }
+.indent-3 { padding-left: 75px; }
+.indent-4 { padding-left: 100px; }
+.indent-5 { padding-left: 125px; }
