@@ -45,8 +45,32 @@
     </div>
 </form>
 
-<!-- Journal Table -->
-<form method="POST" action="{{ url_for('bulk_actions') }}">
+<form method="POST" action="{{ url_for('bulk_actions') }}" class="mb-4">
+    <!-- Bulk Actions -->
+    <div class="row g-3 mb-3 p-3 border rounded">
+        <div class="col-md-3">
+            <select name="action" class="form-select">
+                <option value="">Bulk Actions</option>
+                <option value="delete">Delete Selected</option>
+                <option value="update_type">Update Type</option>
+                <option value="lock">Lock Selected</option>
+                <option value="unlock">Unlock Selected</option>
+                <option value="apply_rules">Apply Rules</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="transaction_type" class="form-select">
+                <option value="">Select Type</option>
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button type="submit" class="btn btn-primary">Apply</button>
+        </div>
+    </div>
+
+    <!-- Journal Table -->
     <table class="table table-striped">
         <thead>
             <tr>
@@ -81,30 +105,6 @@
             {% endfor %}
         </tbody>
     </table>
-
-    <!-- Bulk Actions -->
-    <div class="row g-3">
-        <div class="col-md-3">
-            <select name="action" class="form-select">
-                <option value="">Bulk Actions</option>
-                <option value="delete">Delete Selected</option>
-                <option value="update_type">Update Type</option>
-                <option value="lock">Lock Selected</option>
-                <option value="unlock">Unlock Selected</option>
-                <option value="apply_rules">Apply Rules</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <select name="transaction_type" class="form-select">
-                <option value="">Select Type</option>
-                <option value="income">Income</option>
-                <option value="expense">Expense</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <button type="submit" class="btn btn-primary">Apply</button>
-        </div>
-    </div>
 </form>
 
 <!-- Add Entry Form -->

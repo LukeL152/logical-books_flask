@@ -136,6 +136,7 @@ class TransactionRule(db.Model):
     new_debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
     new_credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
     is_automatic = db.Column(db.Boolean, default=True)
+    delete_transaction = db.Column(db.Boolean, default=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'))
 
     new_debit_account = db.relationship('Account', foreign_keys=[new_debit_account_id])
@@ -360,6 +361,15 @@ def delete_transactions():
     Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).delete(synchronize_session=False)
     db.session.commit()
     flash(f'{len(transaction_ids)} transactions deleted successfully.', 'success')
+    return redirect(url_for('transactions'))
+
+@app.route('/cleanup_orphaned_transactions')
+def cleanup_orphaned_transactions():
+    orphaned_transactions = db.session.query(Transaction).outerjoin(JournalEntry, Transaction.id == JournalEntry.transaction_id).filter(Transaction.is_approved == True, JournalEntry.id == None).all()
+    for transaction in orphaned_transactions:
+        db.session.delete(transaction)
+    db.session.commit()
+    flash(f'{len(orphaned_transactions)} orphaned transactions have been deleted.', 'success')
     return redirect(url_for('transactions'))
 
 @app.route('/unapproved')
@@ -1184,6 +1194,11 @@ def apply_transaction_rules(transactions, automatic_only=True):
                     continue
             
             # If all conditions are met, apply actions
+            if rule.delete_transaction:
+                if isinstance(transaction, Transaction):
+                    db.session.delete(transaction)
+                break # Move to the next transaction
+
             if rule.new_category:
                 transaction.category = rule.new_category
             if rule.new_description:
@@ -1543,6 +1558,7 @@ def add_transaction_rule():
         new_debit_account_id = request.form.get('new_debit_account_id')
         new_credit_account_id = request.form.get('new_credit_account_id')
         is_automatic = request.form.get('is_automatic') == 'true'
+        delete_transaction = request.form.get('delete_transaction') == 'true'
         client_id = session['client_id']
 
         if not keyword and min_amount is None and max_amount is None and not category_condition:
@@ -1560,6 +1576,7 @@ def add_transaction_rule():
             new_debit_account_id=int(new_debit_account_id) if new_debit_account_id else None,
             new_credit_account_id=int(new_credit_account_id) if new_credit_account_id else None,
             is_automatic=is_automatic,
+            delete_transaction=delete_transaction,
             client_id=client_id
         )
         db.session.add(new_rule)
@@ -1651,6 +1668,7 @@ def edit_transaction_rule(rule_id):
         rule.new_debit_account_id = int(request.form.get('new_debit_account_id')) if request.form.get('new_debit_account_id') else None
         rule.new_credit_account_id = int(request.form.get('new_credit_account_id')) if request.form.get('new_credit_account_id') else None
         rule.is_automatic = request.form.get('is_automatic') == 'true'
+        rule.delete_transaction = request.form.get('delete_transaction') == 'true'
 
         if not rule.keyword and rule.min_amount is None and rule.max_amount is None and not rule.category_condition:
             flash('A rule must have at least a keyword, a category, or a value condition.', 'danger')

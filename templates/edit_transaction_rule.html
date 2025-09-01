@@ -78,6 +78,10 @@
                     <input class="form-check-input" type="checkbox" id="is_automatic" name="is_automatic" value="true" {% if rule.is_automatic %}checked{% endif %}>
                     <label class="form-check-label" for="is_automatic">Run automatically</label>
                 </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="delete_transaction" name="delete_transaction" value="true" {% if rule.delete_transaction %}checked{% endif %}>
+                    <label class="form-check-label" for="delete_transaction">Delete transaction</label>
+                </div>
             </div>
         </div>
         <div class="col-12 mt-3">
