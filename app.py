@@ -378,6 +378,7 @@ def approve_transactions():
             debit_account_id=debit_account_id,
             credit_account_id=credit_account_id,
             amount=abs(transaction.amount),
+            category=transaction.category,
             client_id=session['client_id']
         )
         db.session.add(new_entry)
