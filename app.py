@@ -122,27 +122,22 @@ class Budget(db.Model):
     amount = db.Column(db.Float, nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class RuleAccountLink(db.Model):
-    __tablename__ = 'rule_account_link'
-    rule_id = db.Column(db.Integer, db.ForeignKey('rule.id'), primary_key=True)
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), primary_key=True)
-    is_exclusion = db.Column(db.Boolean, nullable=False, default=False)
-
-class Rule(db.Model):
+class TransactionRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=True)
-    keyword = db.Column(db.String(100), nullable=True)
-    condition = db.Column(db.String(20), nullable=True)
-    value = db.Column(db.Float, nullable=True)
-    category = db.Column(db.String(100), nullable=True)
-    transaction_type = db.Column(db.String(20), nullable=True)
-    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    is_automatic = db.Column(db.Boolean, nullable=False, default=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    accounts = db.relationship('RuleAccountLink', backref='rule', cascade="all, delete-orphan")
-    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
-    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
+    keyword = db.Column(db.String(100))
+    category_condition = db.Column(db.String(100))
+    transaction_type = db.Column(db.String(10))  # 'debit' or 'credit'
+    min_amount = db.Column(db.Float)
+    max_amount = db.Column(db.Float)
+    new_category = db.Column(db.String(100))
+    new_description = db.Column(db.String(200))
+    new_debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
+    new_credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
+    is_automatic = db.Column(db.Boolean, default=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'))
+
+    new_debit_account = db.relationship('Account', foreign_keys=[new_debit_account_id])
+    new_credit_account = db.relationship('Account', foreign_keys=[new_credit_account_id])
 
 class FinancialPeriod(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -457,54 +452,10 @@ def run_category_rules(transactions):
 @app.route('/run_unapproved_rules', methods=['POST'])
 def run_unapproved_rules():
     transactions_to_update = Transaction.query.filter_by(is_approved=False, client_id=session['client_id']).all()
-    all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
-    updated_count = 0
-    for transaction in transactions_to_update:
-        applicable_rules = []
-        for rule in all_rules:
-            if not rule.accounts:
-                applicable_rules.append(rule)
-                continue
-            applicable_rules.append(rule)
-
-        for rule in applicable_rules:
-            normalized_description = ' '.join(transaction.description.lower().split())
-            normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
-
-            keyword_match = False
-            if normalized_keyword:
-                keyword_match = normalized_keyword in normalized_description
-            
-            condition_match = False
-            if rule.condition and rule.value is not None:
-                if rule.condition == 'less_than' and transaction.amount < rule.value:
-                    condition_match = True
-                elif rule.condition == 'greater_than' and transaction.amount > rule.value:
-                    condition_match = True
-                elif rule.condition == 'equals' and transaction.amount == rule.value:
-                    condition_match = True
-
-            apply_rule = False
-            if rule.keyword and (rule.condition and rule.value is not None):
-                if keyword_match and condition_match:
-                    apply_rule = True
-            elif rule.keyword:
-                if keyword_match:
-                    apply_rule = True
-            elif rule.condition and rule.value is not None:
-                if condition_match:
-                    apply_rule = True
-
-            if apply_rule:
-                if rule.debit_account_id:
-                    transaction.debit_account_id = rule.debit_account_id
-                if rule.credit_account_id:
-                    transaction.credit_account_id = rule.credit_account_id
-                transaction.rule_modified = True
-                updated_count += 1
+    apply_transaction_rules(transactions_to_update, automatic_only=False)
     run_category_rules(transactions_to_update)
     db.session.commit()
-    flash(f'{updated_count} transactions updated successfully based on rules.', 'success')
+    flash(f'{len(transactions_to_update)} transactions updated successfully based on rules.', 'success')
     return redirect(url_for('unapproved_transactions'))
 
 
@@ -637,7 +588,7 @@ def delete_client(client_id):
     ImportTemplate.query.filter_by(client_id=client_id).delete()
     Account.query.filter_by(client_id=client_id).delete()
     Budget.query.filter_by(client_id=client_id).delete()
-    Rule.query.filter_by(client_id=client_id).delete()
+    TransactionRule.query.filter_by(client_id=client_id).delete()
     db.session.delete(client)
     db.session.commit()
     flash('Client deleted successfully.', 'success')
@@ -1067,56 +1018,12 @@ def bulk_actions():
         flash(f'{len(entry_ids)} entries unlocked successfully.', 'success')
     elif action == 'apply_rules':
         entries_to_update = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
-        all_rules = Rule.query.filter_by(client_id=session['client_id']).order_by(Rule.id).all()
-        updated_count = 0
-        for entry in entries_to_update:
-            applicable_rules = []
-            for rule in all_rules:
-                if not rule.accounts:
-                    applicable_rules.append(rule)
-                    continue
-                applicable_rules.append(rule)
-
-            for rule in applicable_rules:
-                normalized_description = ' '.join(entry.description.lower().split())
-                normalized_keyword = ' '.join(rule.keyword.lower().split()) if rule.keyword else None
-
-                keyword_match = False
-                if normalized_keyword:
-                    keyword_match = normalized_keyword in normalized_description
-                
-                condition_match = False
-                if rule.condition and rule.value is not None:
-                    if rule.condition == 'less_than' and entry.amount < rule.value:
-                        condition_match = True
-                    elif rule.condition == 'greater_than' and entry.amount > rule.value:
-                        condition_match = True
-                    elif rule.condition == 'equals' and entry.amount == rule.value:
-                        condition_match = True
-
-                apply_rule = False
-                if rule.keyword and (rule.condition and rule.value is not None):
-                    if keyword_match and condition_match:
-                        apply_rule = True
-                elif rule.keyword:
-                    if keyword_match:
-                        apply_rule = True
-                elif rule.condition and rule.value is not None:
-                    if condition_match:
-                        apply_rule = True
-
-                if apply_rule:
-                    if rule.category:
-                        entry.category = rule.category
-                    if rule.transaction_type:
-                        entry.transaction_type = rule.transaction_type
-                    if rule.debit_account_id:
-                        entry.debit_account_id = rule.debit_account_id
-                    if rule.credit_account_id:
-                        entry.credit_account_id = rule.credit_account_id
-                    updated_count += 1
+        # This is a bit of a hack, as apply_transaction_rules expects Transaction objects, not JournalEntry objects.
+        # However, they share the same relevant fields (description, amount, category, debit_account_id, credit_account_id).
+        # A better solution would be to refactor the rule application logic to be more generic.
+        apply_transaction_rules(entries_to_update)
         db.session.commit()
-        flash(f'{updated_count} entries updated successfully based on rules.', 'success')
+        flash(f'{len(entries_to_update)} entries updated successfully based on rules.', 'success')
     
     return redirect(url_for('journal'))
 
@@ -1193,6 +1100,45 @@ def delete_template(template_id):
     flash('Template deleted successfully.', 'success')
     return redirect(url_for('import_page'))
 
+def apply_transaction_rules(transactions, automatic_only=True):
+    query = TransactionRule.query.filter_by(client_id=session['client_id'])
+    if automatic_only:
+        query = query.filter_by(is_automatic=True)
+    rules = query.all()
+    for transaction in transactions:
+        for rule in rules:
+            # Keyword
+            if rule.keyword and rule.keyword.lower() not in transaction.description.lower():
+                continue
+
+            # Category
+            if rule.category_condition and rule.category_condition != transaction.category:
+                continue
+
+            # Amount
+            if rule.min_amount is not None and transaction.amount < rule.min_amount:
+                continue
+            if rule.max_amount is not None and transaction.amount > rule.max_amount:
+                continue
+
+            # Type
+            if rule.transaction_type:
+                if rule.transaction_type == 'debit' and transaction.amount >= 0:
+                    continue
+                if rule.transaction_type == 'credit' and transaction.amount < 0:
+                    continue
+            
+            # If all conditions are met, apply actions
+            if rule.new_category:
+                transaction.category = rule.new_category
+            if rule.new_description:
+                transaction.description = rule.new_description
+            if rule.new_debit_account_id:
+                transaction.debit_account_id = rule.new_debit_account_id
+            if rule.new_credit_account_id:
+                transaction.credit_account_id = rule.new_credit_account_id
+            transaction.rule_modified = True
+
 @app.route('/import_csv', methods=['POST'])
 def import_csv():
     files = request.files.getlist('csv_files')
@@ -1202,25 +1148,6 @@ def import_csv():
     if not template:
         flash('No import template found for the selected account.', 'danger')
         return redirect(url_for('import_page'))
-
-    all_rules = Rule.query.filter_by(client_id=session['client_id'], is_automatic=True).order_by(Rule.id).all()
-    
-    # Pre-filter rules that could possibly apply
-    applicable_rules = []
-    for rule in all_rules:
-        if not rule.accounts:
-            applicable_rules.append(rule)
-            continue
-
-        excluded_accounts = {link.account_id for link in rule.accounts if link.is_exclusion}
-        if account_id in excluded_accounts:
-            continue
-
-        included_accounts = {link.account_id for link in rule.accounts if not link.is_exclusion}
-        if included_accounts and account_id not in included_accounts:
-            continue
-            
-        applicable_rules.append(rule)
 
     for file in files:
         stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
@@ -1258,6 +1185,7 @@ def import_csv():
                 db.session.rollback()
                 return redirect(url_for('journal'))
         run_category_rules(transactions)
+        apply_transaction_rules(transactions)
 
     db.session.commit()
     flash(f'{len(files)} file(s) imported successfully.', 'success')
@@ -1517,21 +1445,10 @@ def export_balance_sheet():
 def rules():
     return redirect(url_for('transaction_rules'))
 
-@app.route('/transaction_rules', methods=['GET', 'POST'])
+@app.route('/transaction_rules')
 def transaction_rules():
-    if request.method == 'POST':
-        keyword = request.form['keyword']
-        category = request.form['category']
-        transaction_type = request.form['transaction']
-        new_rule = Rule(keyword=keyword, category=category, transaction_type=transaction_type, client_id=session['client_id'])
-        db.session.add(new_rule)
-        db.session.commit()
-        flash('Rule created successfully.', 'success')
-        return redirect(url_for('transaction_rules'))
-    else:
-        rules = Rule.query.filter_by(client_id=session['client_id']).all()
-        account_choices = get_account_choices(session['client_id'])
-        return render_template('transaction_rules.html', rules=rules, accounts=account_choices)
+    rules = TransactionRule.query.filter_by(client_id=session['client_id']).all()
+    return render_template('transaction_rules.html', rules=rules)
 
 @app.route('/category_rules', methods=['GET', 'POST'])
 def category_rules():
@@ -1548,67 +1465,54 @@ def category_rules():
         account_choices = get_account_choices(session['client_id'])
         return render_template('category_rules.html', rules=rules, accounts=account_choices)
 
-@app.route('/add_transaction_rule', methods=['POST'])
+@app.route('/add_transaction_rule', methods=['GET', 'POST'])
 def add_transaction_rule():
-    name = request.form['name']
-    keyword = request.form.get('keyword')
-    condition = request.form.get('condition')
-    value_str = request.form.get('value')
-    category = request.form.get('category')
-    transaction_type = request.form.get('transaction_type')
-    debit_account_id = request.form.get('debit_account_id')
-    credit_account_id = request.form.get('credit_account_id')
-    is_automatic = request.form.get('is_automatic') == 'true'
-    include_accounts = request.form.getlist('include_accounts')
-    exclude_accounts = request.form.getlist('exclude_accounts')
+    categories = db.session.query(Transaction.category).distinct().all()
+    categories = [c[0] for c in categories if c[0]]
+    accounts_choices = get_account_choices(session['client_id'])
+    accounts = []
+    for account_id, account_name, level in accounts_choices:
+        indent = '&nbsp;' * level * 4
+        accounts.append((account_id, Markup(f"{indent}{account_name}")))
 
-    # Basic validation
-    if not keyword and not (condition and value_str):
-        flash('A rule must have at least a keyword or a value condition.', 'danger')
+    if request.method == 'POST':
+        keyword = request.form.get('keyword')
+        category_condition = request.form.get('category_condition')
+        transaction_type = request.form.get('transaction_type')
+        min_amount_str = request.form.get('min_amount')
+        max_amount_str = request.form.get('max_amount')
+        min_amount = float(min_amount_str) if min_amount_str else None
+        max_amount = float(max_amount_str) if max_amount_str else None
+        new_category = request.form.get('new_category')
+        new_description = request.form.get('new_description')
+        new_debit_account_id = request.form.get('new_debit_account_id')
+        new_credit_account_id = request.form.get('new_credit_account_id')
+        is_automatic = request.form.get('is_automatic') == 'true'
+        client_id = session['client_id']
+
+        if not keyword and min_amount is None and max_amount is None and not category_condition:
+            flash('A rule must have at least a keyword, a category, or a value condition.', 'danger')
+            return render_template('add_transaction_rule.html', clients=Client.query.all(), categories=categories, accounts=accounts)
+
+        new_rule = TransactionRule(
+            keyword=keyword,
+            category_condition=category_condition,
+            transaction_type=transaction_type,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            new_category=new_category,
+            new_description=new_description,
+            new_debit_account_id=int(new_debit_account_id) if new_debit_account_id else None,
+            new_credit_account_id=int(new_credit_account_id) if new_credit_account_id else None,
+            is_automatic=is_automatic,
+            client_id=client_id
+        )
+        db.session.add(new_rule)
+        db.session.commit()
+        flash('Transaction rule created successfully.', 'success')
         return redirect(url_for('transaction_rules'))
     
-    if not category and not transaction_type and not debit_account_id and not credit_account_id:
-        flash('A rule must specify at least a category, a transaction type, or debit/credit accounts to set.', 'danger')
-        return redirect(url_for('transaction_rules'))
-
-    value = float(value_str) if value_str else None
-
-    # Use sets for efficient handling of overlaps
-    include_set = set(include_accounts)
-    exclude_set = set(exclude_accounts)
-
-    # Excluded accounts take precedence. An account cannot be in both.
-    conflicting_accounts = include_set.intersection(exclude_set)
-    if conflicting_accounts:
-        conflicting_names = [acc.name for acc in Account.query.filter(Account.id.in_(conflicting_accounts)).all()]
-        flash(f"Accounts cannot be in both include and exclude lists: {', '.join(conflicting_names)}. They have been excluded by default.", 'warning')
-        include_set -= exclude_set
-
-    new_rule = Rule(
-        name=name,
-        keyword=keyword,
-        condition=condition,
-        value=value,
-        category=category, 
-        transaction_type=transaction_type,
-        debit_account_id=debit_account_id,
-        credit_account_id=credit_account_id,
-        is_automatic=is_automatic,
-        client_id=session['client_id']
-    )
-
-    for account_id in include_set:
-        link = RuleAccountLink(account_id=account_id, is_exclusion=False)
-        new_rule.accounts.append(link)
-
-    for account_id in exclude_set:
-        link = RuleAccountLink(account_id=account_id, is_exclusion=True)
-        new_rule.accounts.append(link)
-
-    db.session.add(new_rule)
-    db.session.commit()
-    flash('Transaction rule created successfully.', 'success')
-    return redirect(url_for('transaction_rules'))
+    return render_template('add_transaction_rule.html', clients=Client.query.all(), categories=categories, accounts=accounts)
 
 @app.route('/add_category_rule', methods=['POST'])
 def add_category_rule():
@@ -1648,7 +1552,7 @@ def add_category_rule():
 
 @app.route('/delete_transaction_rule/<int:rule_id>')
 def delete_transaction_rule(rule_id):
-    rule = Rule.query.get_or_404(rule_id)
+    rule = TransactionRule.query.get_or_404(rule_id)
     if rule.client_id != session['client_id']:
         return "Unauthorized", 403
     db.session.delete(rule)
@@ -1668,61 +1572,40 @@ def delete_category_rule(rule_id):
 
 @app.route('/edit_transaction_rule/<int:rule_id>', methods=['GET', 'POST'])
 def edit_transaction_rule(rule_id):
-    rule = Rule.query.get_or_404(rule_id)
+    rule = TransactionRule.query.get_or_404(rule_id)
     if rule.client_id != session['client_id']:
         return "Unauthorized", 403
+    categories = db.session.query(Transaction.category).distinct().all()
+    categories = [c[0] for c in categories if c[0]]
+    accounts_choices = get_account_choices(session['client_id'])
+    accounts = []
+    for account_id, account_name, level in accounts_choices:
+        indent = '&nbsp;' * level * 4
+        accounts.append((account_id, Markup(f"{indent}{account_name}")))
+
     if request.method == 'POST':
-        rule.name = request.form['name']
         rule.keyword = request.form.get('keyword')
-        rule.condition = request.form.get('condition')
-        value_str = request.form.get('value')
-        rule.category = request.form.get('category')
+        rule.category_condition = request.form.get('category_condition')
         rule.transaction_type = request.form.get('transaction_type')
-        rule.debit_account_id = request.form.get('debit_account_id')
-        rule.credit_account_id = request.form.get('credit_account_id')
+        min_amount_str = request.form.get('min_amount')
+        max_amount_str = request.form.get('max_amount')
+        rule.min_amount = float(min_amount_str) if min_amount_str else None
+        rule.max_amount = float(max_amount_str) if max_amount_str else None
+        rule.new_category = request.form.get('new_category')
+        rule.new_description = request.form.get('new_description')
+        rule.new_debit_account_id = int(request.form.get('new_debit_account_id')) if request.form.get('new_debit_account_id') else None
+        rule.new_credit_account_id = int(request.form.get('new_credit_account_id')) if request.form.get('new_credit_account_id') else None
         rule.is_automatic = request.form.get('is_automatic') == 'true'
-        include_accounts = request.form.getlist('include_accounts')
-        exclude_accounts = request.form.getlist('exclude_accounts')
 
-        # Basic validation
-        if not rule.keyword and not (rule.condition and value_str):
-            flash('A rule must have at least a keyword or a value condition.', 'danger')
-            return redirect(url_for('edit_transaction_rule', rule_id=rule_id))
-        
-        if not rule.category and not rule.transaction_type and not rule.debit_account_id and not rule.credit_account_id:
-            flash('A rule must specify at least a category, a transaction type, or debit/credit accounts to set.', 'danger')
-            return redirect(url_for('edit_transaction_rule', rule_id=rule_id))
-
-        rule.value = float(value_str) if value_str else None
-
-        # Use sets for efficient handling of overlaps
-        include_set = set(include_accounts)
-        exclude_set = set(exclude_accounts)
-
-        # Excluded accounts take precedence. An account cannot be in both.
-        conflicting_accounts = include_set.intersection(exclude_set)
-        if conflicting_accounts:
-            conflicting_names = [acc.name for acc in Account.query.filter(Account.id.in_(conflicting_accounts)).all()]
-            flash(f"Accounts cannot be in both include and exclude lists: {', '.join(conflicting_names)}. They have been excluded by default.", 'warning')
-            include_set -= exclude_set
-
-        # Clear existing account links
-        RuleAccountLink.query.filter_by(rule_id=rule_id).delete()
-
-        for account_id in include_set:
-            link = RuleAccountLink(rule_id=rule.id, account_id=account_id, is_exclusion=False)
-            db.session.add(link)
-
-        for account_id in exclude_set:
-            link = RuleAccountLink(rule_id=rule.id, account_id=account_id, is_exclusion=True)
-            db.session.add(link)
+        if not rule.keyword and rule.min_amount is None and rule.max_amount is None and not rule.category_condition:
+            flash('A rule must have at least a keyword, a category, or a value condition.', 'danger')
+            return render_template('edit_transaction_rule.html', rule=rule, categories=categories, accounts=accounts)
 
         db.session.commit()
         flash('Transaction rule updated successfully.', 'success')
         return redirect(url_for('transaction_rules'))
     else:
-        account_choices = get_account_choices(session['client_id'])
-        return render_template('edit_rule.html', rule=rule, accounts=account_choices)
+        return render_template('edit_transaction_rule.html', rule=rule, categories=categories, accounts=accounts)
 
 @app.route('/edit_category_rule/<int:rule_id>', methods=['GET', 'POST'])
 def edit_category_rule(rule_id):

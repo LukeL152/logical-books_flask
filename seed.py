@@ -1,4 +1,4 @@
-from app import db, Client, Role, User, Account, JournalEntry, Document, ImportTemplate, Budget, RuleAccountLink, Rule, FinancialPeriod, CategoryRule, FixedAsset, Depreciation, Product, Inventory, Sale, RecurringTransaction, Transaction, AuditTrail
+from app import db, Client, Role, User, Account, JournalEntry, Document, ImportTemplate, Budget, FinancialPeriod, CategoryRule, FixedAsset, Depreciation, Product, Inventory, Sale, RecurringTransaction, Transaction, AuditTrail, TransactionRule
 def seed_data():
     db.session.add(Client(id=1, contact_name='test', business_name='test', contact_email='', contact_phone='', address='', entity_structure='', services_offered='', payment_method='', billing_cycle='', client_status='Active', notes=''))
     db.session.add(Account(id=1, name='Liabilities', type='Liability', opening_balance=0.0, category='', client_id=1, parent_id=None))
@@ -42,9 +42,7 @@ def seed_data():
     db.session.add(JournalEntry(id=35, date='2024-12-31', description='TST*LITTLE BLUE MACARO', debit_account_id=4, credit_account_id=2, amount=15.7, category='None', notes='None', client_id=1, locked=False, is_accrual=False, is_reversing=False, reversal_date='None', status='posted', transaction_type='None'))
     db.session.add(JournalEntry(id=36, date='2024-12-31', description='TST* HIBERNIAN PUB DOW', debit_account_id=4, credit_account_id=2, amount=12.0, category='None', notes='None', client_id=1, locked=False, is_accrual=False, is_reversing=False, reversal_date='None', status='posted', transaction_type='None'))
     db.session.add(ImportTemplate(id=1, account_id=2, client_id=1, date_col=0, description_col=2, amount_col=5, debit_col=None, credit_col=None, category_col=3, notes_col=None, has_header=True, negate_amount=False))
-    db.session.add(RuleAccountLink(rule_id=1, account_id=4, is_exclusion=False))
-    db.session.add(RuleAccountLink(rule_id=1, account_id=2, is_exclusion=False))
-    db.session.add(Rule(id=1, name='Dining and Drinks', keyword='', condition='', value=None, category='', transaction_type='', debit_account_id=4, credit_account_id=2, is_automatic=True, client_id=1))
+        db.session.add(TransactionRule(keyword='DINING', new_category='Dining & Drinks', new_debit_account_id=4, new_credit_account_id=2, client_id=1))
     db.session.add(Transaction(id=1, date='2025-01-30', description='TST*LITTLE BLUE MACARO', amount=8.01, category='Dining & Drinks', client_id=1, is_approved=True, debit_account_id=4, credit_account_id=2, rule_modified=True))
     db.session.add(Transaction(id=2, date='2025-01-30', description='CIRCLE K # 03126', amount=2.36, category='Dining & Drinks', client_id=1, is_approved=True, debit_account_id=4, credit_account_id=2, rule_modified=True))
     db.session.add(Transaction(id=3, date='2025-01-30', description='CIRCLE K 08524', amount=10.43, category='Transportation', client_id=1, is_approved=False, debit_account_id=None, credit_account_id=None, rule_modified=False))
