@@ -458,6 +458,30 @@ def run_unapproved_rules():
     flash(f'{len(transactions_to_update)} transactions updated successfully based on rules.', 'success')
     return redirect(url_for('unapproved_transactions'))
 
+@app.route('/bulk_assign_accounts', methods=['POST'])
+def bulk_assign_accounts():
+    transaction_ids = request.form.getlist('transaction_ids')
+    debit_account_id = request.form.get('bulk_debit_account_id')
+    credit_account_id = request.form.get('bulk_credit_account_id')
+
+    if not transaction_ids:
+        flash('No transactions selected.', 'warning')
+        return redirect(url_for('unapproved_transactions'))
+
+    if not debit_account_id or not credit_account_id:
+        flash('Please select both a debit and a credit account.', 'danger')
+        return redirect(url_for('unapproved_transactions'))
+
+    Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update({
+        'debit_account_id': debit_account_id,
+        'credit_account_id': credit_account_id,
+        'rule_modified': True
+    }, synchronize_session=False)
+
+    db.session.commit()
+    flash(f'{len(transaction_ids)} transactions updated successfully.', 'success')
+    return redirect(url_for('unapproved_transactions'))
+
 
 @app.route('/audit_trail')
 def audit_trail():

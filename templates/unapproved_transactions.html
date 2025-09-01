@@ -10,6 +10,7 @@
         <button type="submit" class="btn btn-primary">Approve Selected Transactions</button>
         <button type="button" class="btn btn-danger" id="delete-selected-btn">Delete Selected Transactions</button>
         <button type="button" class="btn btn-info" id="run-rules-btn">Run Rules</button>
+        <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#assign-accounts-modal">Assign Accounts</button>
     </div>
     <h2>Rule-Modified Transactions</h2>
     <table class="table table-striped">
@@ -93,6 +94,39 @@
         </tbody>
     </table>
 </form>
+
+<!-- Assign Accounts Modal -->
+<div class="modal fade" id="assign-accounts-modal" tabindex="-1" aria-labelledby="assignAccountsModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="assignAccountsModalLabel">Assign Accounts in Bulk</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Select the debit and credit accounts to assign to the selected transactions.</p>
+        <div class="mb-3">
+            <label for="bulk_debit_account_id" class="form-label">Debit Account</label>
+            <select id="bulk_debit_account_id" name="bulk_debit_account_id" class="form-select">
+                <option value="">-- Select Account --</option>
+                {{ render_account_options(accounts) }}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="bulk_credit_account_id" class="form-label">Credit Account</label>
+            <select id="bulk_credit_account_id" name="bulk_credit_account_id" class="form-select">
+                <option value="">-- Select Account --</option>
+                {{ render_account_options(accounts) }}
+            </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="bulk-assign-btn">Assign</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -120,6 +154,32 @@
     document.getElementById('run-rules-btn').addEventListener('click', function() {
         const form = document.getElementById('approve-form');
         form.action = "{{ url_for('run_unapproved_rules') }}";
+        form.submit();
+    });
+
+    document.getElementById('bulk-assign-btn').addEventListener('click', function() {
+        const form = document.getElementById('approve-form');
+        const debitAccountId = document.getElementById('bulk_debit_account_id').value;
+        const creditAccountId = document.getElementById('bulk_credit_account_id').value;
+
+        if (!debitAccountId || !creditAccountId) {
+            alert('Please select both a debit and a credit account.');
+            return;
+        }
+
+        const debitInput = document.createElement('input');
+        debitInput.type = 'hidden';
+        debitInput.name = 'bulk_debit_account_id';
+        debitInput.value = debitAccountId;
+        form.appendChild(debitInput);
+
+        const creditInput = document.createElement('input');
+        creditInput.type = 'hidden';
+        creditInput.name = 'bulk_credit_account_id';
+        creditInput.value = creditAccountId;
+        form.appendChild(creditInput);
+
+        form.action = "{{ url_for('bulk_assign_accounts') }}";
         form.submit();
     });
 </script>
