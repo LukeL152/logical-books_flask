@@ -32,6 +32,7 @@
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
+                <td>{{ transaction.category }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control">
                         {{ render_account_options(accounts, selected_id=transaction.debit_account_id) }}
@@ -73,6 +74,7 @@
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
+                <td>{{ transaction.category }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control">
                         {{ render_account_options(accounts, selected_id=transaction.debit_account_id) }}
@@ -119,10 +121,6 @@
         const form = document.getElementById('approve-form');
         form.action = "{{ url_for('run_unapproved_rules') }}";
         form.submit();
-    });
-</script>
-{% endblock %}
-);
     });
 </script>
 {% endblock %}

@@ -222,6 +222,7 @@ class Transaction(db.Model):
     date = db.Column(db.String(10), nullable=False)
     description = db.Column(db.String(200))
     amount = db.Column(db.Float, nullable=False)
+    category = db.Column(db.String(100), nullable=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     is_approved = db.Column(db.Boolean, nullable=False, default=False)
     debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
@@ -1302,6 +1303,8 @@ def get_account_tree(accounts):
         children_tree = get_account_tree(account.children.all())
         
         account_tree.append({
+            'id': account.id,
+            'parent_id': account.parent_id,
             'name': account.name,
             'balance': balance,
             'children': children_tree

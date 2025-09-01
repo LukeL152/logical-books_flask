@@ -1,9 +1,16 @@
 {% extends "base.html" %}
-{% from '_macros.html' import render_account_row %}
 
 {% macro render_accounts(accounts, level=0) %}
     {% for account in accounts %}
-        {{ render_account_row(account, level) }}
+        <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id }}" class="account-row {% if level > 0 %}child-row-{{ account.parent_id }}{% endif %}">
+            <td style="padding-left: {{ level * 25 }}px;">
+                {% if account.children %}
+                    <i class="bi bi-chevron-down toggle-children" style="cursor: pointer;"></i>
+                {% endif %}
+                {{ account.name }}
+            </td>
+            <td class="text-end">{{ "%.2f"|format(account.balance) }}</td>
+        </tr>
         {% if account.children %}
             {{ render_accounts(account.children, level + 1) }}
         {% endif %}
@@ -37,9 +44,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for account in asset_data %}
-                        {{ render_account_row(account) }}
-                    {% endfor %}
+                    {{ render_accounts(asset_data) }}
                 </tbody>
                 <tfoot>
                     <tr>
@@ -59,9 +64,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for account in liability_data %}
-                        {{ render_account_row(account) }}
-                    {% endfor %}
+                    {{ render_accounts(liability_data) }}
                 </tbody>
                 <tfoot>
                     <tr>
@@ -81,9 +84,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for account in equity_data %}
-                        {{ render_account_row(account) }}
-                    {% endfor %}
+                    {{ render_accounts(equity_data) }}
                 </tbody>
                 <tfoot>
                     <tr>
@@ -94,4 +95,20 @@
             </table>
         </div>
     </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.toggle-children').forEach(item => {
+        item.addEventListener('click', event => {
+            const accountId = item.closest('tr').dataset.id;
+            const children = document.querySelectorAll(`.child-row-${accountId}`);
+            children.forEach(child => {
+                child.classList.toggle('d-none');
+            });
+            item.classList.toggle('bi-chevron-down');
+            item.classList.toggle('bi-chevron-right');
+        });
+    });
+});
+</script>
 {% endblock %}
