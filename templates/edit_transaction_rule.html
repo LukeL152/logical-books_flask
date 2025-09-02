@@ -14,10 +14,9 @@
                 </div>
                 <div class="mb-3">
                     <label for="category_condition" class="form-label">Category</label>
-                    <select id="category_condition" name="category_condition" class="form-select">
-                        <option value="">-- Any Category --</option>
+                    <select id="category_condition" name="category_condition" class="form-select" multiple>
                         {% for category in categories %}
-                            <option value="{{ category }}" {% if rule.category_condition == category %}selected{% endif %}>{{ category }}</option>
+                            <option value="{{ category }}" {% if category in rule.category_condition.split(',') %}selected{% endif %}>{{ category }}</option>
                         {% endfor %}
                     </select>
                 </div>

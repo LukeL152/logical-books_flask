@@ -14,8 +14,7 @@
                 </div>
                 <div class="mb-3">
                     <label for="category_condition" class="form-label">Category</label>
-                    <select id="category_condition" name="category_condition" class="form-select">
-                        <option value="">-- Any Category --</option>
+                    <select id="category_condition" name="category_condition" class="form-select" multiple>
                         {% for category in categories %}
                             <option value="{{ category }}">{{ category }}</option>
                         {% endfor %}

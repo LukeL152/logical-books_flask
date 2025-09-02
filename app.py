@@ -93,6 +93,7 @@ class JournalEntry(db.Model):
     status = db.Column(db.String(20), nullable=False, default='posted') # posted, voided
     transaction_type = db.Column(db.String(20), nullable=True)
     transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'))
+    transaction = db.relationship('Transaction', foreign_keys=[transaction_id])
     debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
     credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
     documents = db.relationship('Document', backref='journal_entry', cascade="all, delete-orphan")
@@ -127,7 +128,7 @@ class Budget(db.Model):
 class TransactionRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     keyword = db.Column(db.String(100))
-    category_condition = db.Column(db.String(100))
+    category_condition = db.Column(db.Text, nullable=True)
     transaction_type = db.Column(db.String(10))  # 'debit' or 'credit'
     min_amount = db.Column(db.Float)
     max_amount = db.Column(db.Float)
@@ -952,7 +953,7 @@ def delete_account(account_id):
 
 @app.route('/journal', methods=['GET', 'POST'])
 def journal():
-    query = db.session.query(JournalEntry).join(Account, JournalEntry.debit_account_id == Account.id).filter(JournalEntry.client_id == session['client_id'])
+    query = db.session.query(JournalEntry).options(db.joinedload(JournalEntry.transaction).joinedload(Transaction.source_account)).join(Account, JournalEntry.debit_account_id == Account.id).filter(JournalEntry.client_id == session['client_id'])
 
     # Default to no filters, but retain filter values from form
     filters = {
@@ -1204,7 +1205,7 @@ def apply_transaction_rules(transactions, automatic_only=True):
                 continue
 
             # Category
-            if rule.category_condition and rule.category_condition != transaction.category:
+            if rule.category_condition and transaction.category not in rule.category_condition.split(','):
                 continue
 
             # Amount
@@ -1592,7 +1593,7 @@ def add_transaction_rule():
 
     if request.method == 'POST':
         keyword = request.form.get('keyword')
-        category_condition = request.form.get('category_condition')
+        category_condition = ",".join(request.form.getlist('category_condition'))
         transaction_type = request.form.get('transaction_type')
         min_amount_str = request.form.get('min_amount')
         max_amount_str = request.form.get('max_amount')
@@ -1704,7 +1705,7 @@ def edit_transaction_rule(rule_id):
 
     if request.method == 'POST':
         rule.keyword = request.form.get('keyword')
-        rule.category_condition = request.form.get('category_condition')
+        rule.category_condition = ",".join(request.form.getlist('category_condition'))
         rule.transaction_type = request.form.get('transaction_type')
         min_amount_str = request.form.get('min_amount')
         max_amount_str = request.form.get('max_amount')

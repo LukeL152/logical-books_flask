@@ -81,6 +81,7 @@
                 <th><a href="{{ url_for('journal', sort='credit_account', direction='desc' if request.args.get('sort') == 'credit_account' and request.args.get('direction') == 'asc' else 'asc') }}">Credit Account</a></th>
                 <th class="text-end"><a href="{{ url_for('journal', sort='amount', direction='desc' if request.args.get('sort') == 'amount' and request.args.get('direction') == 'asc' else 'asc') }}">Amount</a></th>
                 <th><a href="{{ url_for('journal', sort='category', direction='desc' if request.args.get('sort') == 'category' and request.args.get('direction') == 'asc' else 'asc') }}">Category</a></th>
+                <th>Source Account</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -94,6 +95,7 @@
                 <td>{{ entry.credit_account.name }}</td>
                 <td class="text-end">{{ "%.2f"|format(entry.amount) }}</td>
                 <td>{{ entry.category }}</td>
+                <td>{{ entry.transaction.source_account.name if entry.transaction and entry.transaction.source_account else '' }}</td>
                 <td>
                     <a href="{{ url_for('edit_entry', entry_id=entry.id) }}" class="btn btn-sm btn-primary">Edit</a>
                     <a href="{{ url_for('delete_entry', entry_id=entry.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
