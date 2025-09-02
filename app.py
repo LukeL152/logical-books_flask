@@ -365,7 +365,7 @@ def delete_transactions():
 
 @app.route('/cleanup_orphaned_transactions')
 def cleanup_orphaned_transactions():
-    orphaned_transactions = db.session.query(Transaction).outerjoin(JournalEntry, Transaction.id == JournalEntry.transaction_id).filter(Transaction.is_approved == True, JournalEntry.id == None).all()
+    orphaned_transactions = db.session.query(Transaction).outerjoin(JournalEntry, Transaction.id == JournalEntry.transaction_id).filter(Transaction.is_approved, JournalEntry.id is None).all()
     for transaction in orphaned_transactions:
         db.session.delete(transaction)
     db.session.commit()
@@ -773,13 +773,13 @@ def dashboard():
     for account in asset_accounts:
         debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
         credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
-        asset_balances[account.name] = account.opening_balance + credits - debits
+        asset_balances[account.name] = account.opening_balance + debits - credits
 
     liability_balances = {}
     for account in liability_accounts:
         debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
         credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
-        liability_balances[account.name] = account.opening_balance - credits + debits
+        liability_balances[account.name] = account.opening_balance + credits - debits
 
     return render_template('dashboard.html', 
                            m_income=m_income, 
@@ -1071,9 +1071,17 @@ def bulk_actions():
         return redirect(url_for('journal'))
 
     if action == 'delete':
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).delete(synchronize_session=False)
+        entries = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
+        transaction_ids_to_delete = [entry.transaction_id for entry in entries if entry.transaction_id]
+        
+        for entry in entries:
+            db.session.delete(entry)
+            
+        if transaction_ids_to_delete:
+            Transaction.query.filter(Transaction.id.in_(transaction_ids_to_delete)).delete(synchronize_session=False)
+            
         db.session.commit()
-        flash(f'{len(entry_ids)} entries deleted successfully.', 'success')
+        flash(f'{len(entries)} entries deleted successfully.', 'success')
     elif action == 'update_type':
         transaction_type = request.form.get('transaction_type')
         if not transaction_type:
@@ -1299,17 +1307,19 @@ def ledger():
 def get_account_tree(accounts):
     account_tree = []
     for account in accounts:
-        account_ids = get_account_and_children_ids(account)
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(account_ids)).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(account_ids)).scalar() or 0
-        
-        if account.type in ['Asset', 'Expense']:
-            balance = account.opening_balance + debits - credits
-        else: # Liability, Equity, Income
-            balance = account.opening_balance + credits - debits
-
         children_tree = get_account_tree(account.children.all())
         
+        # Calculate this account's individual balance without children
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        if account.type in ['Asset', 'Expense']:
+            own_balance = account.opening_balance + debits - credits
+        else: # Liability, Equity, Income
+            own_balance = account.opening_balance + credits - debits
+
+        # Total balance is own balance plus sum of children's balances
+        balance = own_balance + sum(child['balance'] for child in children_tree)
+
         account_tree.append({
             'id': account.id,
             'parent_id': account.parent_id,
