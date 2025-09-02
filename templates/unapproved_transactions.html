@@ -17,10 +17,10 @@
         <thead>
             <tr>
                 <th><input type="checkbox" id="select-all-rule-modified-approve"></th>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Amount</th>
-                <th>Category</th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='date', direction='desc' if request.args.get('sort') == 'date' and request.args.get('direction') == 'asc' else 'asc') }}">Date</a></th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='description', direction='desc' if request.args.get('sort') == 'description' and request.args.get('direction') == 'asc' else 'asc') }}">Description</a></th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='amount', direction='desc' if request.args.get('sort') == 'amount' and request.args.get('direction') == 'asc' else 'asc') }}">Amount</a></th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='category', direction='desc' if request.args.get('sort') == 'category' and request.args.get('direction') == 'asc' else 'asc') }}">Category</a></th>
                 <th>Debit Account</th>
                 <th>Credit Account</th>
                 <th>Actions</th>
@@ -59,10 +59,10 @@
         <thead>
             <tr>
                 <th><input type="checkbox" id="select-all-unmodified-approve"></th>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Amount</th>
-                <th>Category</th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='date', direction='desc' if request.args.get('sort') == 'date' and request.args.get('direction') == 'asc' else 'asc') }}">Date</a></th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='description', direction='desc' if request.args.get('sort') == 'description' and request.args.get('direction') == 'asc' else 'asc') }}">Description</a></th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='amount', direction='desc' if request.args.get('sort') == 'amount' and request.args.get('direction') == 'asc' else 'asc') }}">Amount</a></th>
+                <th><a href="{{ url_for('unapproved_transactions', sort='category', direction='desc' if request.args.get('sort') == 'category' and request.args.get('direction') == 'asc' else 'asc') }}">Category</a></th>
                 <th>Debit Account</th>
                 <th>Credit Account</th>
                 <th>Actions</th>

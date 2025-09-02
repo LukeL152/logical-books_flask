@@ -374,8 +374,18 @@ def cleanup_orphaned_transactions():
 
 @app.route('/unapproved')
 def unapproved_transactions():
-    rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(Transaction.date.desc()).all()
-    unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(Transaction.date.desc()).all()
+    sort_by = request.args.get('sort', 'date')
+    direction = request.args.get('direction', 'desc')
+
+    sort_column = getattr(Transaction, sort_by, Transaction.date)
+
+    if direction == 'asc':
+        rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(sort_column.asc()).all()
+        unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(sort_column.asc()).all()
+    else:
+        rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(sort_column.desc()).all()
+        unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(sort_column.desc()).all()
+
     account_choices = get_account_choices(session['client_id'])
     return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
 
