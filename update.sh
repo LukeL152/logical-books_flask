@@ -36,4 +36,5 @@ echo "4. Running database migrations..."
 echo "Database migrations complete."
 
 echo "--- Update Complete ---"
-sudo systemctl restart logical-books
+
+systemctl restart logical-books
