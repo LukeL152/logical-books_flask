@@ -39,6 +39,15 @@
                         <option value="credit" {% if rule.transaction_type == 'credit' %}selected{% endif %}>Credit</option>
                     </select>
                 </div>
+                <div class="mb-3">
+                    <label for="source_account_id" class="form-label">Source Account</label>
+                    <select id="source_account_id" name="source_account_id" class="form-select">
+                        <option value="">-- Any --</option>
+                        {% for account_id, indented_name in accounts %}
+                            <option value="{{ account_id }}" {% if rule.source_account_id == account_id %}selected{% endif %}>{{ indented_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
             <div class="col-md-6">
                 <h2>Actions</h2>

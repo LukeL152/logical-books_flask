@@ -138,9 +138,11 @@ class TransactionRule(db.Model):
     is_automatic = db.Column(db.Boolean, default=True)
     delete_transaction = db.Column(db.Boolean, default=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'))
+    source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
 
     new_debit_account = db.relationship('Account', foreign_keys=[new_debit_account_id])
     new_credit_account = db.relationship('Account', foreign_keys=[new_credit_account_id])
+    source_account = db.relationship('Account', foreign_keys=[source_account_id])
 
 class FinancialPeriod(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -226,6 +228,8 @@ class Transaction(db.Model):
     debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
+    source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    source_account = db.relationship('Account', foreign_keys=[source_account_id])
 
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -311,7 +315,7 @@ def create_recurring_journal_entries():
 
 @app.route('/transactions')
 def transactions():
-    transactions = Transaction.query.filter_by(client_id=session['client_id']).order_by(Transaction.date.desc()).all()
+    transactions = Transaction.query.options(db.joinedload(Transaction.source_account)).filter_by(client_id=session['client_id']).order_by(Transaction.date.desc()).all()
     return render_template('transactions.html', transactions=transactions)
 
 @app.route('/add_transaction', methods=['GET', 'POST'])
@@ -329,7 +333,7 @@ def add_transaction():
 
 @app.route('/edit_transaction/<int:transaction_id>', methods=['GET', 'POST'])
 def edit_transaction(transaction_id):
-    transaction = Transaction.query.get_or_404(transaction_id)
+    transaction = Transaction.query.options(db.joinedload(Transaction.source_account)).filter_by(id=transaction_id).first_or_404()
     if transaction.client_id != session['client_id']:
         return "Unauthorized", 403
     if request.method == 'POST':
@@ -379,12 +383,17 @@ def unapproved_transactions():
 
     sort_column = getattr(Transaction, sort_by, Transaction.date)
 
+    base_query = Transaction.query.options(db.joinedload(Transaction.source_account)).filter_by(client_id=session['client_id'], is_approved=False)
+
     if direction == 'asc':
-        rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(sort_column.asc()).all()
-        unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(sort_column.asc()).all()
+        base_query = base_query.order_by(sort_column.asc())
     else:
-        rule_modified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=True).order_by(sort_column.desc()).all()
-        unmodified_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False, rule_modified=False).order_by(sort_column.desc()).all()
+        base_query = base_query.order_by(sort_column.desc())
+    
+    all_transactions = base_query.all()
+
+    rule_modified_transactions = [t for t in all_transactions if t.rule_modified]
+    unmodified_transactions = [t for t in all_transactions if not t.rule_modified]
 
     account_choices = get_account_choices(session['client_id'])
     return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
@@ -1210,6 +1219,10 @@ def apply_transaction_rules(transactions, automatic_only=True):
                     continue
                 if rule.transaction_type == 'credit' and transaction.amount < 0:
                     continue
+
+            # Source Account
+            if rule.source_account_id and rule.source_account_id != transaction.source_account_id:
+                continue
             
             # If all conditions are met, apply actions
             if rule.delete_transaction:
@@ -1264,7 +1277,7 @@ def import_csv():
                 category = row[template.category_col] if template.category_col is not None else None
 
                 new_transaction = Transaction(
-                    date=date, description=description, amount=amount, category=category, client_id=session['client_id']
+                    date=date, description=description, amount=amount, category=category, client_id=session['client_id'], source_account_id=account_id
                 )
                 db.session.add(new_transaction)
                 transactions.append(new_transaction)
@@ -1537,8 +1550,20 @@ def rules():
 
 @app.route('/transaction_rules')
 def transaction_rules():
-    rules = TransactionRule.query.filter_by(client_id=session['client_id']).all()
-    return render_template('transaction_rules.html', rules=rules)
+    rules = TransactionRule.query.options(db.joinedload(TransactionRule.source_account)).filter_by(client_id=session['client_id']).all()
+    
+    rules_by_source = {}
+    for rule in rules:
+        if rule.source_account:
+            if rule.source_account.name not in rules_by_source:
+                rules_by_source[rule.source_account.name] = []
+            rules_by_source[rule.source_account.name].append(rule)
+        else:
+            if 'Unassigned' not in rules_by_source:
+                rules_by_source['Unassigned'] = []
+            rules_by_source['Unassigned'].append(rule)
+            
+    return render_template('transaction_rules.html', rules_by_source=rules_by_source)
 
 @app.route('/category_rules', methods=['GET', 'POST'])
 def category_rules():
@@ -1577,6 +1602,7 @@ def add_transaction_rule():
         new_description = request.form.get('new_description')
         new_debit_account_id = request.form.get('new_debit_account_id')
         new_credit_account_id = request.form.get('new_credit_account_id')
+        source_account_id = request.form.get('source_account_id')
         is_automatic = request.form.get('is_automatic') == 'true'
         delete_transaction = request.form.get('delete_transaction') == 'true'
         client_id = session['client_id']
@@ -1595,6 +1621,7 @@ def add_transaction_rule():
             new_description=new_description,
             new_debit_account_id=int(new_debit_account_id) if new_debit_account_id else None,
             new_credit_account_id=int(new_credit_account_id) if new_credit_account_id else None,
+            source_account_id=int(source_account_id) if source_account_id else None,
             is_automatic=is_automatic,
             delete_transaction=delete_transaction,
             client_id=client_id
@@ -1687,6 +1714,7 @@ def edit_transaction_rule(rule_id):
         rule.new_description = request.form.get('new_description')
         rule.new_debit_account_id = int(request.form.get('new_debit_account_id')) if request.form.get('new_debit_account_id') else None
         rule.new_credit_account_id = int(request.form.get('new_credit_account_id')) if request.form.get('new_credit_account_id') else None
+        rule.source_account_id = int(request.form.get('source_account_id')) if request.form.get('source_account_id') else None
         rule.is_automatic = request.form.get('is_automatic') == 'true'
         rule.delete_transaction = request.form.get('delete_transaction') == 'true'
 
