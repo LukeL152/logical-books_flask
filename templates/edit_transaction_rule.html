@@ -98,3 +98,31 @@
         </div>
     </form>
 {% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const sourceAccountSelect = document.getElementById('source_account_id');
+    const categorySelect = document.getElementById('category_condition');
+
+    sourceAccountSelect.addEventListener('change', function() {
+        const accountId = this.value;
+        if (accountId) {
+            fetch(`/get_categories_for_account/${accountId}`)
+                .then(response => response.json())
+                .then(data => {
+                    categorySelect.innerHTML = '';
+                    data.forEach(category => {
+                        const option = document.createElement('option');
+                        option.value = category;
+                        option.textContent = category;
+                        categorySelect.appendChild(option);
+                    });
+                });
+        } else {
+            categorySelect.innerHTML = '';
+        }
+    });
+});
+</script>
+{% endblock %}

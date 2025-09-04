@@ -8,7 +8,7 @@ from sqlalchemy import func
 import csv
 import io
 from datetime import datetime, timedelta
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import json
 import markdown
 
@@ -1364,8 +1364,8 @@ def income_statement():
 
 @app.route('/balance_sheet')
 def balance_sheet():
-    asset_accounts = Account.query.filter_by(client_id=session['client_id'], type='Asset', parent_id=None).all()
-    liability_accounts = Account.query.filter_by(client_id=session['client_id'], type='Liability', parent_id=None).all()
+    asset_accounts = Account.query.filter(Account.type.in_(['Asset', 'Accounts Receivable', 'Inventory', 'Fixed Asset', 'Accumulated Depreciation'])).filter_by(client_id=session['client_id'], parent_id=None).all()
+    liability_accounts = Account.query.filter(Account.type.in_(['Liability', 'Accounts Payable', 'Long-Term Debt'])).filter_by(client_id=session['client_id'], parent_id=None).all()
     equity_accounts = Account.query.filter_by(client_id=session['client_id'], type='Equity', parent_id=None).all()
 
     asset_data = get_account_tree(asset_accounts)
@@ -1393,6 +1393,28 @@ def balance_sheet():
     # Check if books are balanced
     is_balanced = round(total_assets, 2) == round(total_liabilities + total_equity, 2)
 
+    # Debugging info
+    asset_ids = [acc.id for acc in Account.query.filter_by(client_id=session['client_id'], type='Asset').all()]
+    total_asset_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(asset_ids)).scalar() or 0
+    total_asset_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(asset_ids)).scalar() or 0
+
+    liability_ids = [acc.id for acc in Account.query.filter_by(client_id=session['client_id'], type='Liability').all()]
+    total_liability_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(liability_ids)).scalar() or 0
+    total_liability_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(liability_ids)).scalar() or 0
+
+    equity_ids = [acc.id for acc in Account.query.filter_by(client_id=session['client_id'], type='Equity').all()]
+    total_equity_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(equity_ids)).scalar() or 0
+    total_equity_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(equity_ids)).scalar() or 0
+
+    revenue_ids = [acc.id for acc in Account.query.filter_by(client_id=session['client_id'], type='Revenue').all()]
+    total_revenue_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(revenue_ids)).scalar() or 0
+    total_revenue_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(revenue_ids)).scalar() or 0
+
+    expense_ids = [acc.id for acc in Account.query.filter_by(client_id=session['client_id'], type='Expense').all()]
+    total_expense_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_(expense_ids)).scalar() or 0
+    total_expense_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_(expense_ids)).scalar() or 0
+
+
     return render_template('balance_sheet.html', 
                            asset_data=asset_data, 
                            liability_data=liability_data, 
@@ -1400,7 +1422,19 @@ def balance_sheet():
                            total_assets=total_assets, 
                            total_liabilities=total_liabilities, 
                            total_equity=total_equity,
-                           is_balanced=is_balanced)
+                           is_balanced=is_balanced,
+                           debug_info={
+                               'total_asset_debits': total_asset_debits,
+                               'total_asset_credits': total_asset_credits,
+                               'total_liability_debits': total_liability_debits,
+                               'total_liability_credits': total_liability_credits,
+                               'total_equity_debits': total_equity_debits,
+                               'total_equity_credits': total_equity_credits,
+                               'total_revenue_debits': total_revenue_debits,
+                               'total_revenue_credits': total_revenue_credits,
+                               'total_expense_debits': total_expense_debits,
+                               'total_expense_credits': total_expense_credits,
+                           })
 
 @app.route('/statement_of_cash_flows')
 def statement_of_cash_flows():
@@ -1563,8 +1597,15 @@ def transaction_rules():
             if 'Unassigned' not in rules_by_source:
                 rules_by_source['Unassigned'] = []
             rules_by_source['Unassigned'].append(rule)
+
+    sorted_rules_by_source = OrderedDict(sorted(rules_by_source.items()))
             
-    return render_template('transaction_rules.html', rules_by_source=rules_by_source)
+    return render_template('transaction_rules.html', rules_by_source=sorted_rules_by_source)
+
+@app.route('/get_categories_for_account/<int:account_id>')
+def get_categories_for_account(account_id):
+    categories = db.session.query(Transaction.category).filter_by(source_account_id=account_id, client_id=session['client_id']).distinct().all()
+    return json.dumps([c[0] for c in categories if c[0]])
 
 @app.route('/category_rules', methods=['GET', 'POST'])
 def category_rules():

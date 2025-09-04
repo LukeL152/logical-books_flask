@@ -96,6 +96,50 @@
         </div>
     </div>
 
+    {% if debug_info %}
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h2>Debugging Information</h2>
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Account Type</th>
+                        <th>Total Debits</th>
+                        <th>Total Credits</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Assets</td>
+                        <td>{{ "%.2f"|format(debug_info.total_asset_debits) }}</td>
+                        <td>{{ "%.2f"|format(debug_info.total_asset_credits) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Liabilities</td>
+                        <td>{{ "%.2f"|format(debug_info.total_liability_debits) }}</td>
+                        <td>{{ "%.2f"|format(debug_info.total_liability_credits) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Equity</td>
+                        <td>{{ "%.2f"|format(debug_info.total_equity_debits) }}</td>
+                        <td>{{ "%.2f"|format(debug_info.total_equity_credits) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Revenue</td>
+                        <td>{{ "%.2f"|format(debug_info.total_revenue_debits) }}</td>
+                        <td>{{ "%.2f"|format(debug_info.total_revenue_credits) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Expenses</td>
+                        <td>{{ "%.2f"|format(debug_info.total_expense_debits) }}</td>
+                        <td>{{ "%.2f"|format(debug_info.total_expense_credits) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.toggle-children').forEach(item => {
