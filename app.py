@@ -955,13 +955,15 @@ def delete_account(account_id):
 def journal():
     query = db.session.query(JournalEntry).options(db.joinedload(JournalEntry.transaction).joinedload(Transaction.source_account)).join(Account, JournalEntry.debit_account_id == Account.id).filter(JournalEntry.client_id == session['client_id'])
 
+    categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
+
     # Default to no filters, but retain filter values from form
     filters = {
         'start_date': request.form.get('start_date', ''),
         'end_date': request.form.get('end_date', ''),
         'description': request.form.get('description', ''),
         'account_id': request.form.get('account_id', ''),
-        'category': request.form.get('category', ''),
+        'categories': request.form.getlist('categories'),
         'transaction_type': request.form.get('transaction_type', '')
     }
 
@@ -971,11 +973,11 @@ def journal():
         if filters['end_date']:
             query = query.filter(JournalEntry.date <= filters['end_date'])
         if filters['description']:
-            query = query.filter(JournalEntry.description.ilike(f"%{filters['description']}%"))
+            query = query.filter(JournalEntry.description.ilike(f"%{filters['description']}"))
         if filters['account_id']:
-            query = query.filter(JournalEntry.account_id == filters['account_id'])
-        if filters['category']:
-            query = query.filter(JournalEntry.category.ilike(f"%{filters['category']}%"))
+            query = query.filter(db.or_(JournalEntry.debit_account_id == filters['account_id'], JournalEntry.credit_account_id == filters['account_id']))
+        if filters['categories']:
+            query = query.filter(JournalEntry.category.in_(filters['categories']))
         if filters['transaction_type']:
             query = query.filter(JournalEntry.transaction_type == filters['transaction_type'])
 
@@ -997,7 +999,7 @@ def journal():
     entries = query.all()
     account_choices = get_account_choices(session['client_id'])
     
-    return render_template('journal.html', entries=entries, accounts=account_choices, filters=filters)
+    return render_template('journal.html', entries=entries, accounts=account_choices, filters=filters, categories=categories)
 
 @app.route('/add_entry', methods=['POST'])
 def add_entry():

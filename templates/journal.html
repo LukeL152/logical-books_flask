@@ -70,8 +70,12 @@
             </select>
         </div>
         <div class="col-md-3">
-            <label for="category" class="form-label">Category</label>
-            <input type="text" id="category" name="category" class="form-control" value="{{ filters.category }}">
+            <label for="categories" class="form-label">Category</label>
+            <select id="categories" name="categories" class="form-select" multiple>
+                {% for category in categories %}
+                    <option value="{{ category }}" {% if category in filters.categories %}selected{% endif %}>{{ category }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="col-md-3">
             <label for="transaction_type" class="form-label">Type</label>
