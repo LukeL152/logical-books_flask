@@ -1064,6 +1064,23 @@ def delete_entry(entry_id):
     flash('Journal entry deleted successfully.', 'success')
     return redirect(url_for('journal'))
 
+@app.route('/unapprove_transaction/<int:entry_id>')
+def unapprove_transaction(entry_id):
+    entry = JournalEntry.query.get_or_404(entry_id)
+    if entry.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    if entry.transaction_id:
+        transaction = Transaction.query.get(entry.transaction_id)
+        if transaction:
+            transaction.is_approved = False
+    
+    db.session.delete(entry)
+    db.session.commit()
+
+    flash('Transaction unapproved and sent back to the unapproved list.', 'success')
+    return redirect(url_for('journal'))
+
 @app.route('/toggle_lock/<int:entry_id>')
 def toggle_lock(entry_id):
     entry = JournalEntry.query.get_or_404(entry_id)
