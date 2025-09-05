@@ -155,11 +155,15 @@
         </tbody>
     </table>
 </form>
+{% endblock %}
 
 {% block scripts %}
 <script>
 $(document).ready(function() {
     $('#journal-table').DataTable();
+    $('#debit_account_id').select2();
+    $('#credit_account_id').select2();
+    $('#account_id').select2();
 
     document.getElementById('select-all').addEventListener('click', function(event) {
         var checkboxes = document.querySelectorAll('.entry-checkbox');

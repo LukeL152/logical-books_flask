@@ -73,12 +73,15 @@
 {% block scripts %}
 <script>
 $(document).ready(function() {
-    // Initialize DataTable, but disable ordering to respect the hierarchy
+    // Initialize DataTable
     var table = $('#accounts-table').DataTable({
         "paging": false,
         "info": false,
         "ordering": false
     });
+
+    // Initialize Select2
+    $('#parent_id').select2();
 
     // Add event listener for the toggle icons
     $('#accounts-table tbody').on('click', '.toggle-children', function () {
