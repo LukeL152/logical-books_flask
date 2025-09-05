@@ -7,7 +7,7 @@
     <a href="{{ url_for('cleanup_orphaned_transactions') }}" class="btn btn-warning mb-3">Cleanup Orphaned Transactions</a>
     <button type="submit" class="btn btn-danger mb-3">Delete Selected</button>
 
-    <table class="table table-striped">
+    <table class="table table-striped" id="transactions-table">
         <thead>
             <tr>
                 <th><input type="checkbox" id="select-all"></th>
@@ -41,11 +41,15 @@
 
 {% block scripts %}
 <script>
+$(document).ready(function() {
+    $('#transactions-table').DataTable();
+
     document.getElementById('select-all').addEventListener('click', function(event) {
         const checkboxes = document.querySelectorAll('.transaction-checkbox');
         for (const checkbox of checkboxes) {
             checkbox.checked = event.target.checked;
         }
     });
+});
 </script>
 {% endblock %}

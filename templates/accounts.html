@@ -13,7 +13,7 @@
 {% block content %}
 <h1 class="mb-4">Chart of Accounts</h1>
 
-<table class="table table-hover">
+<table class="table table-hover" id="accounts-table">
     <thead>
         <tr>
             <th>Name</th>
@@ -68,21 +68,57 @@
         <button type="submit" class="btn btn-primary">Add Account</button>
     </div>
 </form>
+{% endblock %}
 
+{% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('.toggle-children').forEach(item => {
-        item.addEventListener('click', event => {
-            const accountId = item.closest('tr').dataset.id;
-            const children = document.querySelectorAll(`.child-row-${accountId}`);
-            children.forEach(child => {
-                child.classList.toggle('d-none');
-            });
-            item.classList.toggle('bi-chevron-right');
-            item.classList.toggle('bi-chevron-down');
-        });
+$(document).ready(function() {
+    // Initialize DataTable, but disable ordering to respect the hierarchy
+    var table = $('#accounts-table').DataTable({
+        "paging": false,
+        "info": false,
+        "ordering": false
+    });
+
+    // Add event listener for the toggle icons
+    $('#accounts-table tbody').on('click', '.toggle-children', function () {
+        const icon = $(this);
+        const tr = icon.closest('tr');
+        const accountId = tr.data('id');
+        const children = $(`.child-row-${accountId}`);
+
+        // Toggle the icon's class
+        icon.toggleClass('bi-chevron-right bi-chevron-down');
+
+        // Check if we are expanding or collapsing
+        if (icon.hasClass('bi-chevron-down')) {
+            // If expanding, just show the direct children
+            children.removeClass('d-none');
+        } else {
+            // If collapsing, we need to hide all descendants, not just direct children
+            function hideAllChildren(parentId) {
+                const directChildren = $(`.child-row-${parentId}`);
+                directChildren.each(function() {
+                    const child = $(this);
+                    const childId = child.data('id');
+                    const childIcon = child.find('.toggle-children');
+
+                    // 1. Hide the row
+                    child.addClass('d-none');
+
+                    // 2. If this child is also a parent, reset its icon
+                    if (childIcon.length) {
+                        childIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
+                    }
+
+                    // 3. Recurse to hide its children
+                    hideAllChildren(childId);
+                });
+            }
+            hideAllChildren(accountId);
+        }
     });
 });
 </script>
-
 {% endblock %}
+
