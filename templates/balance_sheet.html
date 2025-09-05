@@ -8,8 +8,14 @@
                     <i class="bi bi-chevron-down toggle-children" style="cursor: pointer;"></i>
                 {% endif %}
                 {{ account.name }}
+                {% if account.last_reconciliation_date %}
+                    <small class="text-muted">(Last reconciled: {{ account.last_reconciliation_date }})</small>
+                {% endif %}
             </td>
             <td class="text-end">{{ "%.2f"|format(account.balance) }}</td>
+            <td class="text-center">
+                <a href="{{ url_for('reconcile_account', account_id=account.id) }}" class="btn btn-sm btn-outline-primary">Reconcile</a>
+            </td>
         </tr>
         {% if account.children %}
             {{ render_accounts(account.children, level + 1) }}
@@ -41,6 +47,7 @@
                     <tr>
                         <th>Account</th>
                         <th class="text-end">Balance</th>
+                        <th class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -50,6 +57,7 @@
                     <tr>
                         <th>Total Assets</th>
                         <th class="text-end">{{ "%.2f"|format(total_assets) }}</th>
+                        <th></th>
                     </tr>
                 </tfoot>
             </table>
@@ -61,6 +69,7 @@
                     <tr>
                         <th>Account</th>
                         <th class="text-end">Balance</th>
+                        <th class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -70,6 +79,7 @@
                     <tr>
                         <th>Total Liabilities</th>
                         <th class="text-end">{{ "%.2f"|format(total_liabilities) }}</th>
+                        <th></th>
                     </tr>
                 </tfoot>
             </table>
@@ -81,6 +91,7 @@
                     <tr>
                         <th>Account</th>
                         <th class="text-end">Balance</th>
+                        <th class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -90,6 +101,7 @@
                     <tr>
                         <th>Total Equity</th>
                         <th class="text-end">{{ "%.2f"|format(total_equity) }}</th>
+                        <th></th>
                     </tr>
                 </tfoot>
             </table>

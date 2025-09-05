@@ -97,6 +97,17 @@ class JournalEntry(db.Model):
     debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
     credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
     documents = db.relationship('Document', backref='journal_entry', cascade="all, delete-orphan")
+    reconciliation_id = db.Column(db.Integer, db.ForeignKey('reconciliation.id'), nullable=True)
+
+class Reconciliation(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    statement_date = db.Column(db.String(10), nullable=False)
+    statement_balance = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    account = db.relationship('Account', backref='reconciliations')
+    journal_entries = db.relationship('JournalEntry', backref='reconciliation')
 
 class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1353,12 +1364,15 @@ def get_account_tree(accounts):
         # Total balance is own balance plus sum of children's balances
         balance = own_balance + sum(child['balance'] for child in children_tree)
 
+        last_reconciliation = Reconciliation.query.filter_by(account_id=account.id).order_by(Reconciliation.statement_date.desc()).first()
+
         account_tree.append({
             'id': account.id,
             'parent_id': account.parent_id,
             'name': account.name,
             'balance': balance,
-            'children': children_tree
+            'children': children_tree,
+            'last_reconciliation_date': last_reconciliation.statement_date if last_reconciliation else None
         })
     return account_tree
 
@@ -1454,6 +1468,43 @@ def balance_sheet():
                                'total_expense_debits': total_expense_debits,
                                'total_expense_credits': total_expense_credits,
                            })
+
+@app.route('/reconcile/<int:account_id>', methods=['GET', 'POST'])
+def reconcile_account(account_id):
+    account = Account.query.get_or_404(account_id)
+    if account.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    if request.method == 'POST':
+        statement_date = request.form['statement_date']
+        statement_balance = float(request.form['statement_balance'])
+        journal_entry_ids = request.form.getlist('journal_entry_ids')
+
+        new_reconciliation = Reconciliation(
+            account_id=account_id,
+            statement_date=statement_date,
+            statement_balance=statement_balance,
+            client_id=session['client_id']
+        )
+        db.session.add(new_reconciliation)
+        db.session.commit()
+
+        JournalEntry.query.filter(JournalEntry.id.in_(journal_entry_ids)).update(
+            {'reconciliation_id': new_reconciliation.id},
+            synchronize_session=False
+        )
+        db.session.commit()
+
+        flash('Reconciliation saved successfully.', 'success')
+        return redirect(url_for('balance_sheet'))
+
+    entries = JournalEntry.query.filter(
+        db.or_(JournalEntry.debit_account_id == account_id, JournalEntry.credit_account_id == account_id),
+        JournalEntry.reconciliation_id == None,
+        JournalEntry.client_id == session['client_id']
+    ).order_by(JournalEntry.date).all()
+
+    return render_template('reconciliation.html', account=account, entries=entries)
 
 @app.route('/statement_of_cash_flows')
 def statement_of_cash_flows():
