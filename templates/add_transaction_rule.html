@@ -102,29 +102,29 @@
 {% block scripts %}
 <script>
 $(document).ready(function() {
-    $('#source_account_id').select2();
+    // Initialize Select2
+    const sourceAccountSelect = $('#source_account_id').select2();
     $('#new_debit_account_id').select2();
     $('#new_credit_account_id').select2();
 
-    const sourceAccountSelect = document.getElementById('source_account_id');
-    const categorySelect = document.getElementById('category_condition');
+    const categorySelect = $('#category_condition');
 
-    sourceAccountSelect.addEventListener('change', function() {
+    // Handle category filtering
+    sourceAccountSelect.on('change', function() {
         const accountId = this.value;
         if (accountId) {
             fetch(`/get_categories_for_account/${accountId}`)
                 .then(response => response.json())
                 .then(data => {
-                    categorySelect.innerHTML = '';
+                    categorySelect.empty(); // Clear existing options
                     data.forEach(category => {
-                        const option = document.createElement('option');
-                        option.value = category;
-                        option.textContent = category;
-                        categorySelect.appendChild(option);
+                        const option = new Option(category, category, false, false);
+                        categorySelect.append(option);
                     });
+                    categorySelect.trigger('change'); // Notify Select2 of the change
                 });
         } else {
-            categorySelect.innerHTML = '';
+            categorySelect.empty().trigger('change');
         }
     });
 });
