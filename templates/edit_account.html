@@ -46,3 +46,11 @@
     </form>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#parent_id').select2();
+});
+</script>
+{% endblock %}

@@ -101,7 +101,11 @@
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
+$(document).ready(function() {
+    $('#source_account_id').select2();
+    $('#new_debit_account_id').select2();
+    $('#new_credit_account_id').select2();
+
     const sourceAccountSelect = document.getElementById('source_account_id');
     const categorySelect = document.getElementById('category_condition');
 

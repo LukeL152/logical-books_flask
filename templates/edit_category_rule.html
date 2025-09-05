@@ -52,3 +52,12 @@
         </div>
     </form>
 {% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#debit_account_id').select2();
+    $('#credit_account_id').select2();
+});
+</script>
+{% endblock %}
