@@ -73,52 +73,68 @@
 {% block scripts %}
 <script>
 $(document).ready(function() {
-    // Initialize DataTable
     var table = $('#accounts-table').DataTable({
         "paging": false,
         "info": false,
         "ordering": false
     });
 
-    // Initialize Select2
-    $('#parent_id').select2();
+    // When a search is performed...
+    table.on('search.dt', function() {
+        // First, hide all child rows to reset the state
+        $('tr.account-row').addClass('d-none');
+        // Show only top-level accounts
+        $('tr.account-row[data-parent-id="None"]').removeClass('d-none');
+        // Reset all icons to collapsed
+        $('.toggle-children').removeClass('bi-chevron-down').addClass('bi-chevron-right');
 
-    // Add event listener for the toggle icons
+        var searchTerm = table.search();
+        if (searchTerm) {
+            // For every row in the table (including those hidden by DataTables)
+            table.rows({ search: 'applied' }).nodes().each(function(rowNode) {
+                var row = $(rowNode);
+                // Make the matched row visible
+                row.removeClass('d-none');
+
+                // And make all its parents visible
+                let parentId = row.data('parent-id');
+                while (parentId && parentId !== 'None') {
+                    let parentRow = $('tr[data-id="' + parentId + '"]');
+                    parentRow.removeClass('d-none');
+                    parentRow.find('.toggle-children').removeClass('bi-chevron-right').addClass('bi-chevron-down');
+                    parentId = parentRow.data('parent-id');
+                }
+            });
+        }
+    });
+
+    // Handle the manual expanding and collapsing
     $('#accounts-table tbody').on('click', '.toggle-children', function () {
         const icon = $(this);
         const tr = icon.closest('tr');
         const accountId = tr.data('id');
-        const children = $(`.child-row-${accountId}`);
+        const children = $('tr.child-row-' + accountId);
 
-        // Toggle the icon's class
         icon.toggleClass('bi-chevron-right bi-chevron-down');
 
-        // Check if we are expanding or collapsing
         if (icon.hasClass('bi-chevron-down')) {
-            // If expanding, just show the direct children
             children.removeClass('d-none');
         } else {
-            // If collapsing, we need to hide all descendants, not just direct children
-            function hideAllChildren(parentId) {
-                const directChildren = $(`.child-row-${parentId}`);
+            // Hide all descendants
+            function hideDescendants(parentId) {
+                const directChildren = $('tr.child-row-' + parentId);
                 directChildren.each(function() {
                     const child = $(this);
                     const childId = child.data('id');
-                    const childIcon = child.find('.toggle-children');
-
-                    // 1. Hide the row
                     child.addClass('d-none');
-
-                    // 2. If this child is also a parent, reset its icon
-                    if (childIcon.length) {
+                    const childIcon = child.find('.toggle-children');
+                    if (childIcon.hasClass('bi-chevron-down')) {
                         childIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
                     }
-
-                    // 3. Recurse to hide its children
-                    hideAllChildren(childId);
+                    hideDescendants(childId);
                 });
             }
-            hideAllChildren(accountId);
+            hideDescendants(accountId);
         }
     });
 });
