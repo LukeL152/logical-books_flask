@@ -9,6 +9,7 @@
     <div class="mb-3">
         <button type="submit" class="btn btn-primary">Approve Selected Transactions</button>
         <button type="button" class="btn btn-danger" id="delete-selected-btn">Delete Selected Transactions</button>
+        <a href="{{ url_for('delete_duplicates') }}" class="btn btn-warning">Delete All Duplicates</a>
         <button type="button" class="btn btn-info" id="run-rules-btn">Run Rules</button>
         <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#assign-accounts-modal">Assign Accounts</button>
     </div>
@@ -29,7 +30,7 @@
         </thead>
         <tbody>
             {% for transaction in rule_modified_transactions %}
-            <tr>
+            <tr class="{% if transaction.is_duplicate %}table-danger{% endif %}">
                 <td><input type="checkbox" name="transaction_ids" value="{{ transaction.id }}" class="approve-checkbox-rule-modified"></td>
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>
@@ -73,7 +74,7 @@
         </thead>
         <tbody>
             {% for transaction in unmodified_transactions %}
-            <tr>
+            <tr class="{% if transaction.is_duplicate %}table-danger{% endif %}">
                 <td><input type="checkbox" name="transaction_ids" value="{{ transaction.id }}" class="approve-checkbox-unmodified"></td>
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>

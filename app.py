@@ -407,11 +407,49 @@ def unapproved_transactions():
     
     all_transactions = base_query.all()
 
+    # Duplicate detection
+    seen = set()
+    duplicates = set()
+    for t in all_transactions:
+        key = (t.date, t.description, t.amount)
+        if key in seen:
+            duplicates.add(key)
+        seen.add(key)
+
+    for t in all_transactions:
+        key = (t.date, t.description, t.amount)
+        if key in duplicates:
+            t.is_duplicate = True
+        else:
+            t.is_duplicate = False
+
     rule_modified_transactions = [t for t in all_transactions if t.rule_modified]
     unmodified_transactions = [t for t in all_transactions if not t.rule_modified]
 
     account_choices = get_account_choices(session['client_id'])
     return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
+
+@app.route('/delete_duplicates')
+def delete_duplicates():
+    all_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()
+
+    seen = {}
+    duplicates_to_delete = []
+    for t in all_transactions:
+        key = (t.date, t.description, t.amount)
+        if key in seen:
+            duplicates_to_delete.append(t.id)
+        else:
+            seen[key] = t.id
+
+    if duplicates_to_delete:
+        Transaction.query.filter(Transaction.id.in_(duplicates_to_delete)).delete(synchronize_session=False)
+        db.session.commit()
+        flash(f'{len(duplicates_to_delete)} duplicate transactions deleted successfully.', 'success')
+    else:
+        flash('No duplicate transactions found.', 'info')
+
+    return redirect(url_for('unapproved_transactions'))
 
 
 
