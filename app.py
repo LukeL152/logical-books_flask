@@ -132,9 +132,12 @@ class ImportTemplate(db.Model):
 
 class Budget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    category = db.Column(db.String(100), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
+    period = db.Column(db.String(20), nullable=False, default='monthly') # monthly, quarterly, yearly
+    start_date = db.Column(db.String(10), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    account = db.relationship('Account', backref='budgets')
 
 class TransactionRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1576,21 +1579,69 @@ def statement_of_cash_flows():
 @app.route('/budget', methods=['GET', 'POST'])
 def budget():
     if request.method == 'POST':
-        category = request.form['category']
+        account_id = request.form['account_id']
         amount = abs(float(request.form['amount']))
-        if Budget.query.filter_by(category=category, client_id=session['client_id']).first():
-            flash(f'Budget for category "{category}" already exists.', 'danger')
+        period = request.form['period']
+        start_date = request.form['start_date']
+
+        # Check if a budget for this account and period already exists
+        if Budget.query.filter_by(account_id=account_id, period=period, start_date=start_date, client_id=session['client_id']).first():
+            flash(f'A budget for this account and period already exists.', 'danger')
             return redirect(url_for('budget'))
-        new_budget = Budget(category=category, amount=amount, client_id=session['client_id'])
+
+        new_budget = Budget(
+            account_id=account_id,
+            amount=amount,
+            period=period,
+            start_date=start_date,
+            client_id=session['client_id']
+        )
         db.session.add(new_budget)
         db.session.commit()
-        flash(f'Budget for category "{category}" created successfully.', 'success')
+        flash(f'Budget created successfully.', 'success')
         return redirect(url_for('budget'))
     else:
         budgets = Budget.query.filter_by(client_id=session['client_id']).all()
-        spending = db.session.query(Budget.category, db.func.sum(JournalEntry.amount).label('spent')).join(JournalEntry, Budget.category == JournalEntry.category).filter(JournalEntry.client_id == session['client_id'], JournalEntry.transaction_type == 'expense').group_by(Budget.category).all()
-        spending_dict = {s.category: s.spent for s in spending}
-        return render_template('budget.html', budgets=budgets, spending=spending_dict)
+        budget_data = []
+        for b in budgets:
+            # Calculate actual spending for the budget period
+            start = datetime.strptime(b.start_date, '%Y-%m-%d')
+            if b.period == 'monthly':
+                end = start.replace(day=28) + timedelta(days=4) # last day of month
+                end = end - timedelta(days=end.day)
+            elif b.period == 'quarterly':
+                end = start + timedelta(days=90)
+            else: # yearly
+                end = start.replace(year=start.year + 1) - timedelta(days=1)
+
+            actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
+                .filter(JournalEntry.debit_account_id == b.account_id) \
+                .filter(JournalEntry.date >= b.start_date) \
+                .filter(JournalEntry.date <= end.strftime('%Y-%m-%d')) \
+                .scalar() or 0
+
+            budget_data.append({
+                'id': b.id,
+                'account_name': b.account.name,
+                'amount': b.amount,
+                'period': b.period,
+                'start_date': b.start_date,
+                'actual_spent': actual_spent,
+                'remaining': b.amount - actual_spent
+            })
+
+        account_choices = get_account_choices(session['client_id'])
+        return render_template('budget.html', budgets=budget_data, accounts=account_choices)
+
+@app.route('/delete_budget/<int:budget_id>')
+def delete_budget(budget_id):
+    budget = Budget.query.get_or_404(budget_id)
+    if budget.client_id != session['client_id']:
+        return "Unauthorized", 403
+    db.session.delete(budget)
+    db.session.commit()
+    flash('Budget deleted successfully.', 'success')
+    return redirect(url_for('budget'))
 
 @app.route('/export/ledger')
 def export_ledger():
