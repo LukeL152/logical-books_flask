@@ -830,6 +830,18 @@ def dashboard():
             bar_chart_data[month]['income'] += total
         elif acc_type == 'Expense':
             bar_chart_data[month]['expense'] += total
+
+    # Get full income/expense data using get_account_tree for accuracy
+    revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
+    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
+    revenue_data = get_account_tree(revenue_accounts)
+    expense_data = get_account_tree(expense_accounts)
+    total_revenue = sum(item['balance'] for item in revenue_data)
+    total_expenses = sum(item['balance'] for item in expense_data)
+
+    # This is a simplified representation for the bar chart, not the main KPI
+    bar_chart_income_total = total_revenue
+    bar_chart_expense_total = total_expenses
     
     sorted_months = sorted(bar_chart_data.keys())
     bar_chart_labels = json.dumps(sorted_months)
@@ -945,8 +957,8 @@ def full_pie_chart_expenses():
     expense_breakdown_query = db.session.query(
         JournalEntry.category,
         db.func.sum(JournalEntry.amount).label('total')
-    ).filter(
-        JournalEntry.transaction_type == 'expense',
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date,
         JournalEntry.date <= end_date,
@@ -969,8 +981,8 @@ def full_pie_chart_income():
     income_breakdown_query = db.session.query(
         JournalEntry.category,
         db.func.sum(JournalEntry.amount).label('total')
-    ).filter(
-        JournalEntry.transaction_type == 'income',
+    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        Account.type.in_(['Revenue', 'Income']),
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date,
         JournalEntry.date <= end_date,
