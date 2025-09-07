@@ -845,7 +845,7 @@ def dashboard():
     
     sorted_months = sorted(bar_chart_data.keys())
     bar_chart_labels = json.dumps(sorted_months)
-    bar_chart_income = json.dumps([bar_chart_data[m]['income'] for m in sorted_months])
+    bar_chart_income = json.dumps([bar_chart_income_total / len(sorted_months) if len(sorted_months) > 0 else 0] * len(sorted_months))
     bar_chart_expense = json.dumps([bar_chart_data[m]['expense'] for m in sorted_months])
 
     # Expense breakdown for the selected period for the pie chart
