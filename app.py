@@ -804,12 +804,9 @@ def dashboard():
     income_pie_chart_data = json.dumps([item.total for item in income_breakdown])
 
     # KPIs for the selected period
-    income_this_period = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(
-        JournalEntry.client_id == session['client_id'],
-        Account.type.in_(['Revenue', 'Income']),
-        JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str
-    ).scalar() or 0
+    revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
+    revenue_data = get_account_tree(revenue_accounts)
+    income_this_period = sum(item['balance'] for item in revenue_data)
     
     expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
     expense_data = get_account_tree(expense_accounts)
