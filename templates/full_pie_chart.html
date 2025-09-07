@@ -1,6 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
     <h1 class="mb-4">{{ title }}</h1>
+
+    <form method="GET" class="mb-4 p-3 border rounded">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label for="start_date" class="form-label">Start Date</label>
+                <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
+            </div>
+            <div class="col-md-3">
+                <label for="end_date" class="form-label">End Date</label>
+                <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">Filter</button>
+            </div>
+        </div>
+    </form>
+
     <div style="width: 80%; margin: auto;">
         <canvas id="fullPieChart"></canvas>
     </div>

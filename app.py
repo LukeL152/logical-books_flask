@@ -951,8 +951,8 @@ def category_transactions(category_name):
 
 @app.route('/full_pie_chart_expenses')
 def full_pie_chart_expenses():
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
+    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
 
     expense_breakdown_query = db.session.query(
         JournalEntry.category,
@@ -971,12 +971,12 @@ def full_pie_chart_expenses():
     pie_chart_labels = json.dumps([item.category for item in expense_breakdown])
     pie_chart_data = json.dumps([item.total for item in expense_breakdown])
 
-    return render_template('full_pie_chart.html', title='Expense Breakdown', labels=pie_chart_labels, data=pie_chart_data)
+    return render_template('full_pie_chart.html', title='Expense Breakdown', labels=pie_chart_labels, data=pie_chart_data, start_date=start_date, end_date=end_date)
 
 @app.route('/full_pie_chart_income')
 def full_pie_chart_income():
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
+    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
 
     income_breakdown_query = db.session.query(
         JournalEntry.category,
@@ -995,7 +995,7 @@ def full_pie_chart_income():
     pie_chart_labels = json.dumps([item.category for item in income_breakdown])
     pie_chart_data = json.dumps([item.total for item in income_breakdown])
 
-    return render_template('full_pie_chart.html', title='Income Breakdown', labels=pie_chart_labels, data=pie_chart_data)
+    return render_template('full_pie_chart.html', title='Income Breakdown', labels=pie_chart_labels, data=pie_chart_data, start_date=start_date, end_date=end_date)
 
 @app.route('/accounts')
 def accounts():
