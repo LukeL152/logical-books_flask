@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Vendor - Logical Books{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Edit Vendor: {{ vendor.name }}</h2>
+    <hr>
+    <form method="POST" action="{{ url_for('edit_vendor', vendor_id=vendor.id) }}" class="row g-3">
+        <div class="col-md-6">
+            <label for="name" class="form-label">Vendor Name</label>
+            <input type="text" id="name" name="name" class="form-control" value="{{ vendor.name }}" required>
+        </div>
+        <div class="col-md-6">
+            <label for="contact_name" class="form-label">Contact Name</label>
+            <input type="text" id="contact_name" name="contact_name" class="form-control" value="{{ vendor.contact_name }}">
+        </div>
+        <div class="col-md-6">
+            <label for="contact_email" class="form-label">Contact Email</label>
+            <input type="email" id="contact_email" name="contact_email" class="form-control" value="{{ vendor.contact_email }}">
+        </div>
+        <div class="col-md-6">
+            <label for="contact_phone" class="form-label">Contact Phone</label>
+            <input type="tel" id="contact_phone" name="contact_phone" class="form-control" value="{{ vendor.contact_phone }}">
+        </div>
+        <div class="col-12">
+            <label for="address" class="form-label">Address</label>
+            <textarea id="address" name="address" class="form-control">{{ vendor.address }}</textarea>
+        </div>
+        <div class="col-12">
+            <label for="notes" class="form-label">Notes</label>
+            <textarea id="notes" name="notes" class="form-control">{{ vendor.notes }}</textarea>
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Update Vendor</button>
+            <a href="{{ url_for('vendors') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
