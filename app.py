@@ -811,12 +811,9 @@ def dashboard():
         JournalEntry.date <= end_date_str
     ).scalar() or 0
     
-    expenses_this_period = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(
-        JournalEntry.client_id == session['client_id'],
-        Account.type == 'Expense',
-        JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str
-    ).scalar() or 0
+    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
+    expense_data = get_account_tree(expense_accounts)
+    expenses_this_period = sum(item['balance'] for item in expense_data)
 
     m_income = income_this_period
     m_expenses = abs(expenses_this_period)
