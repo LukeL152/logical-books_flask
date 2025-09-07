@@ -409,11 +409,11 @@ def unapproved_transactions():
 
     # Get fingerprints of all existing journal entries
     journal_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
-    journal_fingerprints = set((je.date, je.description, je.amount) for je in journal_entries)
+    journal_fingerprints = set((je.date, je.description.strip(), round(je.amount, 2)) for je in journal_entries)
 
     # Duplicate detection
     for t in all_transactions:
-        key = (t.date, t.description, t.amount)
+        key = (t.date, t.description.strip(), round(abs(t.amount), 2))
         if key in journal_fingerprints:
             t.is_duplicate = True
         else:
@@ -429,11 +429,11 @@ def unapproved_transactions():
 def delete_duplicates():
     unapproved_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()
     journal_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
-    journal_fingerprints = set((je.date, je.description, je.amount) for je in journal_entries)
+    journal_fingerprints = set((je.date, je.description.strip(), round(je.amount, 2)) for je in journal_entries)
 
     duplicates_to_delete = []
     for t in unapproved_transactions:
-        key = (t.date, t.description, t.amount)
+        key = (t.date, t.description.strip(), round(abs(t.amount), 2))
         if key in journal_fingerprints:
             duplicates_to_delete.append(t.id)
 
