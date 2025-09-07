@@ -407,18 +407,14 @@ def unapproved_transactions():
     
     all_transactions = base_query.all()
 
-    # Duplicate detection
-    seen = set()
-    duplicates = set()
-    for t in all_transactions:
-        key = (t.date, t.description, t.amount)
-        if key in seen:
-            duplicates.add(key)
-        seen.add(key)
+    # Get fingerprints of all existing journal entries
+    journal_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
+    journal_fingerprints = set((je.date, je.description, je.amount) for je in journal_entries)
 
+    # Duplicate detection
     for t in all_transactions:
         key = (t.date, t.description, t.amount)
-        if key in duplicates:
+        if key in journal_fingerprints:
             t.is_duplicate = True
         else:
             t.is_duplicate = False
@@ -431,16 +427,15 @@ def unapproved_transactions():
 
 @app.route('/delete_duplicates')
 def delete_duplicates():
-    all_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()
+    unapproved_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()
+    journal_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
+    journal_fingerprints = set((je.date, je.description, je.amount) for je in journal_entries)
 
-    seen = {}
     duplicates_to_delete = []
-    for t in all_transactions:
+    for t in unapproved_transactions:
         key = (t.date, t.description, t.amount)
-        if key in seen:
+        if key in journal_fingerprints:
             duplicates_to_delete.append(t.id)
-        else:
-            seen[key] = t.id
 
     if duplicates_to_delete:
         Transaction.query.filter(Transaction.id.in_(duplicates_to_delete)).delete(synchronize_session=False)
