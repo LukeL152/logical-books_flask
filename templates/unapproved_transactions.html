@@ -141,8 +141,12 @@ $(document).ready(function() {
     $('#unmodified-table').DataTable();
     $('.debit-account-select').select2();
     $('.credit-account-select').select2();
-    $('#bulk_debit_account_id').select2();
-    $('#bulk_credit_account_id').select2();
+    $('#bulk_debit_account_id').select2({
+        dropdownParent: $('#assign-accounts-modal')
+    });
+    $('#bulk_credit_account_id').select2({
+        dropdownParent: $('#assign-accounts-modal')
+    });
 
     document.getElementById('select-all-rule-modified-approve').addEventListener('click', function(event) {
         const checkboxes = document.querySelectorAll('.approve-checkbox-rule-modified');
