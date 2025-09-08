@@ -850,18 +850,10 @@ def dashboard():
     # Get full income/expense data using get_account_tree for accuracy
     revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
     expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
-    revenue_data = get_account_tree(revenue_accounts)
-    expense_data = get_account_tree(expense_accounts)
-    total_revenue = sum(item['balance'] for item in revenue_data)
-    total_expenses = sum(item['balance'] for item in expense_data)
-
-    # This is a simplified representation for the bar chart, not the main KPI
-    bar_chart_income_total = total_revenue
-    bar_chart_expense_total = total_expenses
     
     sorted_months = sorted(bar_chart_data.keys())
     bar_chart_labels = json.dumps(sorted_months)
-    bar_chart_income = json.dumps([bar_chart_income_total / len(sorted_months) if len(sorted_months) > 0 else 0] * len(sorted_months))
+    bar_chart_income = json.dumps([bar_chart_data[m]['income'] for m in sorted_months])
     bar_chart_expense = json.dumps([bar_chart_data[m]['expense'] for m in sorted_months])
 
     # Expense breakdown for the selected period for the pie chart
