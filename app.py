@@ -828,33 +828,34 @@ def dashboard():
     end_date_str = end_date.strftime('%Y-%m-%d')
 
     # Monthly data for bar chart
-    monthly_data_query = db.session.query(
+    income_by_month_query = db.session.query(
         db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
-        Account.type,
         db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        Account.type.in_(['Revenue', 'Income']),
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date_str,
         JournalEntry.date <= end_date_str
-    ).group_by('month', Account.type)
+    ).group_by('month')
 
-    monthly_data = monthly_data_query.all()
+    expense_by_month_query = db.session.query(
+        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
+        JournalEntry.client_id == session['client_id'],
+        JournalEntry.date >= start_date_str,
+        JournalEntry.date <= end_date_str
+    ).group_by('month')
 
-    bar_chart_data = defaultdict(lambda: {'income': 0, 'expense': 0})
-    for month, acc_type, total in monthly_data:
-        if acc_type in ['Revenue', 'Income']:
-            bar_chart_data[month]['income'] += total
-        elif acc_type == 'Expense':
-            bar_chart_data[month]['expense'] += total
+    income_by_month = {r.month: r.total for r in income_by_month_query.all()}
+    expense_by_month = {r.month: r.total for r in expense_by_month_query.all()}
 
-    # Get full income/expense data using get_account_tree for accuracy
-    revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
-    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
-    
-    sorted_months = sorted(bar_chart_data.keys())
-    bar_chart_labels = json.dumps(sorted_months)
-    bar_chart_income = json.dumps([bar_chart_data[m]['income'] for m in sorted_months])
-    bar_chart_expense = json.dumps([bar_chart_data[m]['expense'] for m in sorted_months])
+    all_months = sorted(list(set(income_by_month.keys()) | set(expense_by_month.keys())))
+
+    bar_chart_labels = json.dumps(all_months)
+    bar_chart_income = json.dumps([income_by_month.get(m, 0) for m in all_months])
+    bar_chart_expense = json.dumps([expense_by_month.get(m, 0) for m in all_months])
 
     # Expense breakdown for the selected period for the pie chart
     expense_breakdown_query = db.session.query(
