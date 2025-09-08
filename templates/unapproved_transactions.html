@@ -3,16 +3,21 @@
 {% from '_macros.html' import render_account_options %}
 
 {% block content %}
-<h1 class="mb-4">Unapproved Transactions</h1>
-
-<form action="{{ url_for('approve_transactions') }}" method="post" id="approve-form">
-    <div class="mb-3">
-        <button type="submit" class="btn btn-primary">Approve Selected Transactions</button>
-        <button type="button" class="btn btn-danger" id="delete-selected-btn">Delete Selected Transactions</button>
-        <a href="{{ url_for('delete_duplicates') }}" class="btn btn-warning">Delete All Duplicates</a>
-        <button type="button" class="btn btn-info" id="run-rules-btn">Run Rules</button>
-        <button type="button" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#assign-accounts-modal">Assign Accounts</button>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Unapproved Transactions</h1>
+    <div class="btn-group">
+        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            Actions
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="document.getElementById('approve-form').submit(); return false;">Approve Selected Transactions</a></li>
+            <li><a class="dropdown-item" href="#" id="delete-selected-btn">Delete Selected Transactions</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('delete_duplicates') }}">Delete All Duplicates</a></li>
+            <li><a class="dropdown-item" href="#" id="run-rules-btn">Run Rules</a></li>
+            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#assign-accounts-modal">Assign Accounts</a></li>
+        </ul>
     </div>
+</div>
     <h2>Rule-Modified Transactions</h2>
     <table class="table table-striped" id="rule-modified-table">
         <thead>
