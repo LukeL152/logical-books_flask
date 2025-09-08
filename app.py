@@ -892,11 +892,11 @@ def dashboard():
 
     # KPIs for the selected period
     revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
-    revenue_data = get_account_tree(revenue_accounts)
+    revenue_data = get_account_tree(revenue_accounts, start_date, end_date)
     income_this_period = sum(item['balance'] for item in revenue_data)
     
     expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
-    expense_data = get_account_tree(expense_accounts)
+    expense_data = get_account_tree(expense_accounts, start_date, end_date)
     expenses_this_period = sum(item['balance'] for item in expense_data)
 
     m_income = income_this_period
@@ -1557,14 +1557,22 @@ def ledger():
     ledger_data = get_account_tree(accounts)
     return render_template('ledger.html', ledger_data=ledger_data)
 
-def get_account_tree(accounts):
+def get_account_tree(accounts, start_date=None, end_date=None):
     account_tree = []
     for account in accounts:
-        children_tree = get_account_tree(account.children.all())
+        children_tree = get_account_tree(account.children.all(), start_date, end_date)
         
         # Calculate this account's individual balance without children
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        debits_query = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id)
+        credits_query = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id)
+
+        if start_date and end_date:
+            debits_query = debits_query.filter(JournalEntry.date.between(start_date, end_date))
+            credits_query = credits_query.filter(JournalEntry.date.between(start_date, end_date))
+
+        debits = debits_query.scalar() or 0
+        credits = credits_query.scalar() or 0
+
         if account.type in ['Asset', 'Expense']:
             own_balance = account.opening_balance + debits - credits
         else: # Liability, Equity, Income
