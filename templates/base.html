@@ -22,73 +22,53 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
                     </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Journal
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('journal') }}">Journal Entries</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('unapproved_transactions') }}">Unapproved Transactions</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('transactions') }}">All Transactions</a></li>
-                        </ul>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('journal') }}">Journal</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('accounts') }}">Chart of Accounts</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('import_page') }}">Import</a>
-                    </li>
-                    
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('ledger') }}">General Ledger</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('income_statement') }}">Income Statement</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('balance_sheet') }}">Balance Sheet</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('statement_of_cash_flows') }}">Statement of Cash Flows</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('fixed_assets') }}">Fixed Assets</a>
-                    </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Inventory
+                            Reports
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('products') }}">Products</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('inventory') }}">Inventory</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('sales') }}">Sales</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('accruals') }}">Accruals</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('recurring_transactions') }}">Recurring Transactions</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('ledger') }}">General Ledger</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('income_statement') }}">Income Statement</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('balance_sheet') }}">Balance Sheet</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('statement_of_cash_flows') }}">Statement of Cash Flows</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('budget') }}">Budget</a>
-                    </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            Rules
+                            Tools
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('import_page') }}">Import</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('transaction_analysis_page') }}">Transaction Analysis</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('transaction_rules') }}">Transaction Rules</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('category_rules') }}">Category Rules</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('recurring_transactions') }}">Recurring Transactions</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('fixed_assets') }}">Fixed Assets</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('budget') }}">Budget</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('audit_trail') }}">Audit Trail</a></li>
                         </ul>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('audit_trail') }}">Audit Trail</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('transaction_analysis_page') }}">Transaction Analysis</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('bookkeeping_guide') }}">Bookkeeping Guide</a>
                     </li>
                 </ul>
                 <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            New
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('add_transaction') }}">Add New Transaction</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('add_vendor') }}">Add New Vendor</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('add_client') }}">Add New Client</a></li>
+                        </ul>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('vendors') }}">Vendors</a>
                     </li>
