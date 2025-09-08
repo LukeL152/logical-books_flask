@@ -2442,9 +2442,10 @@ def transaction_analysis():
     start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
     end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
     group_by = request.args.get('group_by', 'category')
+    vendor_ids = request.args.getlist('vendor_id')
+    account_ids = request.args.getlist('account_id')
 
     query = db.session.query(
-        JournalEntry.category,
         db.func.sum(JournalEntry.amount).label('total')
     ).filter(
         JournalEntry.client_id == session['client_id'],
@@ -2452,17 +2453,33 @@ def transaction_analysis():
         JournalEntry.date <= end_date
     )
 
-    if group_by == 'account':
-        query = query.group_by(JournalEntry.debit_account_id)
+    if vendor_ids:
+        query = query.join(Transaction).filter(Transaction.vendor_id.in_(vendor_ids))
+    
+    if account_ids:
+        query = query.filter(JournalEntry.debit_account_id.in_(account_ids))
+
+    if group_by == 'vendor':
+        query = query.add_columns(Vendor.name).join(Transaction).join(Vendor).group_by(Vendor.name)
+    elif group_by == 'account':
+        query = query.add_columns(Account.name).join(Account, JournalEntry.debit_account_id == Account.id).group_by(Account.name)
+    elif group_by == 'month':
+        query = query.add_columns(db.func.strftime('%Y-%m', JournalEntry.date)).group_by(db.func.strftime('%Y-%m', JournalEntry.date))
+    elif group_by == 'quarter':
+        query = query.add_columns(db.func.strftime('%Y-', JournalEntry.date) + (db.func.strftime('%m', JournalEntry.date).cast(db.Integer) - 1) / 3 + 1).group_by(db.func.strftime('%Y-', JournalEntry.date) + (db.func.strftime('%m', JournalEntry.date).cast(db.Integer) - 1) / 3 + 1)
+    elif group_by == 'year':
+        query = query.add_columns(db.func.strftime('%Y', JournalEntry.date)).group_by(db.func.strftime('%Y', JournalEntry.date))
     else: # Default to category
-        query = query.group_by(JournalEntry.category)
+        query = query.add_columns(JournalEntry.category).group_by(JournalEntry.category)
 
     results = query.all()
 
-    data = [{'group': r[0], 'total': r[1]} for r in results]
+    data = [{'group': r[1], 'total': r[0]} for r in results]
 
     return json.dumps(data)
 
 @app.route('/transaction_analysis')
 def transaction_analysis_page():
-    return render_template('transaction_analysis.html')
+    accounts = get_account_choices(session['client_id'])
+    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
+    return render_template('transaction_analysis.html', accounts=accounts, vendors=vendors)
