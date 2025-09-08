@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Transaction Analysis - Logical Books{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Transaction Analysis</h2>
+    <hr>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label for="start_date" class="form-label">Start Date</label>
+            <input type="date" id="start_date" name="start_date" class="form-control">
+        </div>
+        <div class="col-md-3">
+            <label for="end_date" class="form-label">End Date</label>
+            <input type="date" id="end_date" name="end_date" class="form-control">
+        </div>
+        <div class="col-md-3">
+            <label for="group_by" class="form-label">Group By</label>
+            <select id="group_by" name="group_by" class="form-select">
+                <option value="category">Category</option>
+                <option value="account">Account</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button id="run-analysis" class="btn btn-primary">Run Analysis</button>
+        </div>
+    </div>
+
+    <h3 class="mt-5">Results</h3>
+    <pre id="results"></pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#run-analysis').on('click', function() {
+        const startDate = $('#start_date').val();
+        const endDate = $('#end_date').val();
+        const groupBy = $('#group_by').val();
+
+        fetch(`/api/transaction_analysis?start_date=${startDate}&end_date=${endDate}&group_by=${groupBy}`)
+            .then(response => response.json())
+            .then(data => {
+                $('#results').text(JSON.stringify(data, null, 2));
+            });
+    });
+});
+</script>
+{% endblock %}

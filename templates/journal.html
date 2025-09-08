@@ -114,6 +114,9 @@
         <div class="col-md-3">
             <button type="submit" class="btn btn-primary">Apply</button>
         </div>
+        <div class="col-md-3">
+            <a href="{{ url_for('delete_duplicate_journal_entries') }}" class="btn btn-warning">Delete All Duplicates</a>
+        </div>
     </div>
 
     <!-- Journal Table -->
@@ -133,7 +136,7 @@
         </thead>
         <tbody>
             {% for entry in entries %}
-            <tr class="{% if entry.locked %}table-secondary{% endif %}">
+            <tr class="{% if entry.locked %}table-secondary{% endif %} {% if entry.is_duplicate %}table-danger{% endif %}">
                 <td><input type="checkbox" name="entry_ids" value="{{ entry.id }}" class="entry-checkbox"></td>
                 <td>{{ entry.date }}</td>
                 <td>{{ entry.description }}</td>

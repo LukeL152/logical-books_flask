@@ -1120,6 +1120,22 @@ def journal():
 
     entries = query.all()
     account_choices = get_account_choices(session['client_id'])
+
+    # Duplicate detection
+    seen = set()
+    duplicates = set()
+    for entry in entries:
+        key = (entry.date, entry.description.strip(), round(entry.amount, 2))
+        if key in seen:
+            duplicates.add(key)
+        seen.add(key)
+
+    for entry in entries:
+        key = (entry.date, entry.description.strip(), round(entry.amount, 2))
+        if key in duplicates:
+            entry.is_duplicate = True
+        else:
+            entry.is_duplicate = False
     
     return render_template('journal.html', entries=entries, accounts=account_choices, filters=filters, categories=categories)
 
@@ -1259,6 +1275,28 @@ def bulk_actions():
         db.session.commit()
         flash(f'{len(entries_to_update)} entries updated successfully based on rules.', 'success')
     
+    return redirect(url_for('journal'))
+
+@app.route('/delete_duplicate_journal_entries')
+def delete_duplicate_journal_entries():
+    all_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
+
+    seen = {}
+    duplicates_to_delete = []
+    for entry in all_entries:
+        key = (entry.date, entry.description.strip(), round(entry.amount, 2))
+        if key in seen:
+            duplicates_to_delete.append(entry.id)
+        else:
+            seen[key] = entry.id
+
+    if duplicates_to_delete:
+        JournalEntry.query.filter(JournalEntry.id.in_(duplicates_to_delete)).delete(synchronize_session=False)
+        db.session.commit()
+        flash(f'{len(duplicates_to_delete)} duplicate journal entries deleted successfully.', 'success')
+    else:
+        flash('No duplicate journal entries found.', 'info')
+
     return redirect(url_for('journal'))
 
 @app.route('/import', methods=['GET'])
@@ -2382,3 +2420,33 @@ def calculate_and_record_depreciation():
                 db.session.add(new_entry)
 
         db.session.commit()
+
+@app.route('/api/transaction_analysis')
+def transaction_analysis():
+    start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
+    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    group_by = request.args.get('group_by', 'category')
+
+    query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).filter(
+        JournalEntry.client_id == session['client_id'],
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date
+    )
+
+    if group_by == 'account':
+        query = query.group_by(JournalEntry.debit_account_id)
+    else: # Default to category
+        query = query.group_by(JournalEntry.category)
+
+    results = query.all()
+
+    data = [{'group': r[0], 'total': r[1]} for r in results]
+
+    return json.dumps(data)
+
+@app.route('/transaction_analysis')
+def transaction_analysis_page():
+    return render_template('transaction_analysis.html')
