@@ -268,7 +268,9 @@ class Transaction(db.Model):
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendor.id'), nullable=True)
     source_account = db.relationship('Account', foreign_keys=[source_account_id])
+    vendor = db.relationship('Vendor', foreign_keys=[vendor_id])
 
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -983,6 +985,133 @@ def dashboard():
                            start_date=start_date.strftime('%Y-%m-%d'),
                            end_date=end_date.strftime('%Y-%m-%d'),
                            performance_data=performance_data)
+
+@app.route('/analysis')
+def analysis():
+    # Spending by Category
+    spending_by_category_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
+        JournalEntry.client_id == session['client_id'],
+        JournalEntry.category is not None,
+        JournalEntry.category != ''
+    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+
+    spending_by_category = spending_by_category_query.all()
+
+    category_labels = json.dumps([item.category for item in spending_by_category])
+    category_data = json.dumps([item.total for item in spending_by_category])
+
+    # Spending by Vendor
+    spending_by_vendor_query = db.session.query(
+        Vendor.name,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Transaction, Vendor.id == Transaction.vendor_id).join(JournalEntry, Transaction.id == JournalEntry.transaction_id).filter(
+        JournalEntry.client_id == session['client_id']
+    ).group_by(Vendor.name).order_by(db.func.sum(JournalEntry.amount).desc())
+
+    spending_by_vendor = spending_by_vendor_query.all()
+
+    vendor_labels = json.dumps([item.name for item in spending_by_vendor])
+    vendor_data = json.dumps([item.total for item in spending_by_vendor])
+
+    # Income vs. Expense Trend
+    income_by_month_query = db.session.query(
+        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        Account.type.in_(['Revenue', 'Income']),
+        JournalEntry.client_id == session['client_id']
+    ).group_by('month')
+
+    expense_by_month_query = db.session.query(
+        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
+        JournalEntry.client_id == session['client_id']
+    ).group_by('month')
+
+    income_by_month = {r.month: r.total for r in income_by_month_query.all()}
+    expense_by_month = {r.month: r.total for r in expense_by_month_query.all()}
+
+    all_months = sorted(list(set(income_by_month.keys()) | set(expense_by_month.keys())))
+
+    income_trend_data = json.dumps([income_by_month.get(m, 0) for m in all_months])
+    expense_trend_data = json.dumps([expense_by_month.get(m, 0) for m in all_months])
+
+    # Cash Flow
+    revenue = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Revenue', JournalEntry.client_id == session['client_id']).scalar() or 0
+    expenses = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == session['client_id']).scalar() or 0
+    net_income = revenue - expenses
+
+    # Depreciation
+    depreciation = 0  # Placeholder
+
+    # Change in Accounts Receivable
+    ar_accounts = Account.query.filter_by(type='Accounts Receivable', client_id=session['client_id']).all()
+    ar_balance = sum(acc.opening_balance for acc in ar_accounts)
+    ar_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
+    ar_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
+    change_in_accounts_receivable = (ar_balance + ar_debits - ar_credits) - ar_balance
+
+    # Change in Inventory
+    inventory_accounts = Account.query.filter_by(type='Inventory', client_id=session['client_id']).all()
+    inventory_balance = sum(acc.opening_balance for acc in inventory_accounts)
+    inventory_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
+    inventory_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
+    change_in_inventory = (inventory_balance + inventory_debits - inventory_credits) - inventory_balance
+
+    # Change in Accounts Payable
+    ap_accounts = Account.query.filter_by(type='Accounts Payable', client_id=session['client_id']).all()
+    ap_balance = sum(acc.opening_balance for acc in ap_accounts)
+    ap_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
+    ap_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
+    change_in_accounts_payable = (ap_balance + ap_credits - ap_debits) - ap_balance
+
+    net_cash_from_operating_activities = net_income + depreciation - change_in_accounts_receivable - change_in_inventory + change_in_accounts_payable
+
+    # Investing Activities
+    purchase_of_fixed_assets = 0 # Placeholder
+    net_cash_from_investing_activities = -purchase_of_fixed_assets
+
+    # Financing Activities
+    issuance_of_long_term_debt = 0 # Placeholder
+    repayment_of_long_term_debt = 0 # Placeholder
+    net_cash_from_financing_activities = issuance_of_long_term_debt - repayment_of_long_term_debt
+
+    # Summary
+    net_increase_in_cash = net_cash_from_operating_activities + net_cash_from_investing_activities + net_cash_from_financing_activities
+    cash_at_beginning_of_period = db.session.query(db.func.sum(Account.opening_balance)).filter(Account.type == 'Asset', Account.name.ilike('%cash%')).scalar() or 0
+    cash_at_end_of_period = cash_at_beginning_of_period + net_increase_in_cash
+
+    return render_template('analysis.html', 
+                           spending_by_category=spending_by_category,
+                           category_labels=category_labels,
+                           category_data=category_data,
+                           spending_by_vendor=spending_by_vendor,
+                           vendor_labels=vendor_labels,
+                           vendor_data=vendor_data,
+                           all_months=all_months,
+                           income_trend_data=income_trend_data,
+                           expense_trend_data=expense_trend_data,
+                           net_income=net_income,
+                           depreciation=depreciation,
+                           change_in_accounts_receivable=change_in_accounts_receivable,
+                           change_in_inventory=change_in_inventory,
+                           change_in_accounts_payable=change_in_accounts_payable,
+                           net_cash_from_operating_activities=net_cash_from_operating_activities,
+                           purchase_of_fixed_assets=purchase_of_fixed_assets,
+                           net_cash_from_investing_activities=net_cash_from_investing_activities,
+                           issuance_of_long_term_debt=issuance_of_long_term_debt,
+                           repayment_of_long_term_debt=repayment_of_long_term_debt,
+                           net_cash_from_financing_activities=net_cash_from_financing_activities,
+                           net_increase_in_cash=net_increase_in_cash,
+                           cash_at_beginning_of_period=cash_at_beginning_of_period,
+                           cash_at_end_of_period=cash_at_end_of_period
+                           )
 
 
 @app.route('/')
