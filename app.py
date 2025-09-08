@@ -1823,7 +1823,7 @@ def budget():
             actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
                 .filter(JournalEntry.category == b.category) \
                 .filter(JournalEntry.date >= b.start_date) \
-                .filter(JournalEntry.date <= end.date()) \
+                .filter(JournalEntry.date <= end) \
                 .scalar() or 0
 
             budget_data.append({
