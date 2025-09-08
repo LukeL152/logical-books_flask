@@ -11,5 +11,5 @@ echo "Upgrading database..."
 ./venv/bin/python3 -m flask db upgrade
 
 # Start the Flask development server
-echo "Starting Flask development server on port 8000..."
-./venv/bin/python3 -m flask run --port=8000
+echo "Starting Flask development server on port 8001..."
+./venv/bin/python3 -m flask run --port=8001

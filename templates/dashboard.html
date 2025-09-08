@@ -3,120 +3,171 @@
 {% block content %}
     <h1 class="mb-4">Dashboard</h1>
 
-    <!-- Date Range Selector -->
-    <div class="mb-4">
-        <a href="{{ url_for('dashboard', period='ytd') }}" class="btn btn-outline-primary">YTD</a>
-        <a href="{{ url_for('dashboard', period='current_month') }}" class="btn btn-outline-primary">Current Month</a>
-        <a href="{{ url_for('dashboard', period='last_3_months') }}" class="btn btn-outline-primary">Last 3 Months</a>
-        <a href="{{ url_for('dashboard', period='last_6_months') }}" class="btn btn-outline-primary">Last 6 Months</a>
-    </div>
-    <form action="{{ url_for('dashboard') }}" method="post" class="row g-3 mb-4">
-        <div class="col-md-4">
-            <label for="start_date" class="form-label">Start Date</label>
-            <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
-        </div>
-        <div class="col-md-4">
-            <label for="end_date" class="form-label">End Date</label>
-            <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
-        </div>
-        <div class="col-md-4 align-self-end">
-            <button type="submit" class="btn btn-primary">Apply Filter</button>
-        </div>
-    </form>
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab" aria-controls="dashboard" aria-selected="true">Dashboard</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="budget-tab" data-bs-toggle="tab" data-bs-target="#budget" type="button" role="tab" aria-controls="budget" aria-selected="false">Budget Performance</button>
+        </li>
+    </ul>
 
-    <!-- KPIs -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Income</h5>
-                    <p class="card-text fs-4 text-success">${{ "%.2f"|format(m_income) }}</p>
-                </div>
+    <div class="tab-content" id="myTabContent">
+        <div class="tab-pane fade show active" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+            <!-- Date Range Selector -->
+            <div class="mb-4 mt-4">
+                <a href="{{ url_for('dashboard', period='ytd') }}" class="btn btn-outline-primary">YTD</a>
+                <a href="{{ url_for('dashboard', period='current_month') }}" class="btn btn-outline-primary">Current Month</a>
+                <a href="{{ url_for('dashboard', period='last_3_months') }}" class="btn btn-outline-primary">Last 3 Months</a>
+                <a href="{{ url_for('dashboard', period='last_6_months') }}" class="btn btn-outline-primary">Last 6 Months</a>
             </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Expenses</h5>
-                    <p class="card-text fs-4 text-danger">${{ "%.2f"|format(m_expenses) }}</p>
+            <form action="{{ url_for('dashboard') }}" method="post" class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <label for="start_date" class="form-label">Start Date</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
                 </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Net Profit</h5>
-                    <p class="card-text fs-4 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(net_profit) }}</p>
+                <div class="col-md-4">
+                    <label for="end_date" class="form-label">End Date</label>
+                    <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
                 </div>
-            </div>
-        </div>
-    </div>
+                <div class="col-md-4 align-self-end">
+                    <button type="submit" class="btn btn-primary">Apply Filter</button>
+                </div>
+            </form>
 
-    <!-- Charts -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Income vs Expense</h5>
-                    <canvas id="incomeExpenseBarChart"></canvas>
+            <!-- KPIs -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Income</h5>
+                            <p class="card-text fs-4 text-success">${{ "%.2f"|format(m_income) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Expenses</h5>
+                            <p class="card-text fs-4 text-danger">${{ "%.2f"|format(m_expenses) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Net Profit</h5>
+                            <p class="card-text fs-4 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(net_profit) }}</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Expense Breakdown</h5>
-                    <canvas id="expensePieChart"></canvas>
-                    <div class="text-center mt-2">
-                        <a href="{{ url_for('full_pie_chart_expenses', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a>
+
+            <!-- Charts -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Income vs Expense</h5>
+                            <canvas id="incomeExpenseBarChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Expense Breakdown</h5>
+                            <canvas id="expensePieChart"></canvas>
+                            <div class="text-center mt-2">
+                                <a href="{{ url_for('full_pie_chart_expenses', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Income Breakdown</h5>
+                            <canvas id="incomePieChart"></canvas>
+                            <div class="text-center mt-2">
+                                <a href="{{ url_for('full_pie_chart_income', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account Summaries -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Asset Accounts</h5>
+                            <ul class="list-group list-group-flush">
+                                {% for account, balance in asset_balances.items() %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        {{ account }}
+                                        <span class="badge bg-primary rounded-pill">${{ "%.2f"|format(balance) }}</span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Liability Accounts</h5>
+                            <ul class="list-group list-group-flush">
+                                {% for account, balance in liability_balances.items() %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        {{ account }}
+                                        <span class="badge bg-danger rounded-pill">${{ "%.2f"|format(balance) }}</span>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card">
+        <div class="tab-pane fade" id="budget" role="tabpanel" aria-labelledby="budget-tab">
+            {% for item in performance_data %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2 class="h5 mb-0">{{ item.category_name }}</h2>
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title">Income Breakdown</h5>
-                    <canvas id="incomePieChart"></canvas>
-                    <div class="text-center mt-2">
-                        <a href="{{ url_for('full_pie_chart_income', start_date=start_date, end_date=end_date) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <canvas id="chart-{{ loop.index }}"></canvas>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Period</th>
+                                        <th class="text-end">Budgeted</th>
+                                        <th class="text-end">Actual</th>
+                                        <th class="text-end">Difference</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in item.history %}
+                                    <tr>
+                                        <td>{{ row.period_name }}</td>
+                                        <td class="text-end">{{ "%.2f"|format(row.budgeted) }}</td>
+                                        <td class="text-end">{{ "%.2f"|format(row.actual) }}</td>
+                                        <td class="text-end {% if row.difference >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(row.difference) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Account Summaries -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Asset Accounts</h5>
-                    <ul class="list-group list-group-flush">
-                        {% for account, balance in asset_balances.items() %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                {{ account }}
-                                <span class="badge bg-primary rounded-pill">${{ "%.2f"|format(balance) }}</span>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Liability Accounts</h5>
-                    <ul class="list-group list-group-flush">
-                        {% for account, balance in liability_balances.items() %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                {{ account }}
-                                <span class="badge bg-danger rounded-pill">${{ "%.2f"|format(balance) }}</span>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
+            {% endfor %}
         </div>
     </div>
 {% endblock %}

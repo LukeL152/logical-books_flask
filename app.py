@@ -28,6 +28,11 @@ class CustomJSONEncoder(JSONEncoder):
 app = Flask(__name__)
 app.json_encoder = CustomJSONEncoder
 
+@app.template_filter('tojson')
+def tojson_filter(obj):
+    return json.dumps(obj)
+
+
 @app.template_filter('nl2br')
 def nl2br(s):
     return Markup(s.replace('\n', '<br>\n')) if s else ''
@@ -152,12 +157,11 @@ class ImportTemplate(db.Model):
 
 class Budget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     period = db.Column(db.String(20), nullable=False, default='monthly') # monthly, quarterly, yearly
     start_date = db.Column(db.Date, nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    account = db.relationship('Account', backref='budgets')
 
 class TransactionRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -915,6 +919,53 @@ def dashboard():
         credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
         liability_balances[account.name] = account.opening_balance + credits - debits
 
+    # Budget performance data
+    budgets = Budget.query.filter_by(client_id=session['client_id']).all()
+    performance_data = []
+    for budget in budgets:
+        history = []
+        today = datetime.now().date()
+        current_date = budget.start_date
+
+        while current_date <= today:
+            if budget.period == 'monthly':
+                period_start = current_date.replace(day=1)
+                next_month = current_date.replace(day=28) + timedelta(days=4)
+                period_end = next_month - timedelta(days=next_month.day)
+                period_name = period_start.strftime("%B %Y")
+                current_date = period_end + timedelta(days=1)
+            elif budget.period == 'quarterly':
+                quarter = (current_date.month - 1) // 3 + 1
+                period_start = datetime(current_date.year, 3 * quarter - 2, 1).date()
+                period_end = (datetime(current_date.year, 3 * quarter % 12 + 1, 1) - timedelta(days=1)).date()
+                period_name = f"Q{quarter} {period_start.year}"
+                current_date = period_end + timedelta(days=1)
+            else: # yearly
+                period_start = datetime(current_date.year, 1, 1).date()
+                period_end = datetime(current_date.year, 12, 31).date()
+                period_name = str(period_start.year)
+                current_date = period_end + timedelta(days=1)
+
+            actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
+                .filter(JournalEntry.category == budget.category) \
+                .filter(JournalEntry.date >= period_start) \
+                .filter(JournalEntry.date <= period_end) \
+                .scalar() or 0
+
+            history.append({
+                'period_name': period_name,
+                'budgeted': budget.amount,
+                'actual': actual_spent,
+                'difference': budget.amount - actual_spent
+            })
+
+        performance_data.append({
+            'category_name': budget.category,
+            'period': budget.period,
+            'amount': budget.amount,
+            'history': history
+        })
+
     return render_template('dashboard.html', 
                            m_income=m_income, 
                            m_expenses=m_expenses, 
@@ -930,7 +981,9 @@ def dashboard():
                            income_pie_chart_labels=income_pie_chart_labels,
                            income_pie_chart_data=income_pie_chart_data,
                            start_date=start_date.strftime('%Y-%m-%d'),
-                           end_date=end_date.strftime('%Y-%m-%d'))
+                           end_date=end_date.strftime('%Y-%m-%d'),
+                           performance_data=performance_data)
+
 
 @app.route('/')
 def index():
@@ -1732,18 +1785,18 @@ def statement_of_cash_flows():
 @app.route('/budget', methods=['GET', 'POST'])
 def budget():
     if request.method == 'POST':
-        account_id = request.form['account_id']
+        category = request.form['category']
         amount = abs(float(request.form['amount']))
         period = request.form['period']
         start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
 
-        # Check if a budget for this account and period already exists
-        if Budget.query.filter_by(account_id=account_id, period=period, start_date=start_date, client_id=session['client_id']).first():
-            flash(f'A budget for this account and period already exists.', 'danger')
+        # Check if a budget for this category and period already exists
+        if Budget.query.filter_by(category=category, period=period, start_date=start_date, client_id=session['client_id']).first():
+            flash(f'A budget for this category and period already exists.', 'danger')
             return redirect(url_for('budget'))
 
         new_budget = Budget(
-            account_id=account_id,
+            category=category,
             amount=amount,
             period=period,
             start_date=start_date,
@@ -1768,14 +1821,14 @@ def budget():
                 end = start.replace(year=start.year + 1) - timedelta(days=1)
 
             actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
-                .filter(JournalEntry.debit_account_id == b.account_id) \
+                .filter(JournalEntry.category == b.category) \
                 .filter(JournalEntry.date >= b.start_date) \
                 .filter(JournalEntry.date <= end.date()) \
                 .scalar() or 0
 
             budget_data.append({
                 'id': b.id,
-                'account_name': b.account.name,
+                'category_name': b.category,
                 'amount': b.amount,
                 'period': b.period,
                 'start_date': b.start_date,
@@ -1783,8 +1836,10 @@ def budget():
                 'remaining': b.amount - actual_spent
             })
 
-        account_choices = get_account_choices(session['client_id'])
-        return render_template('budget.html', budgets=budget_data, accounts=account_choices)
+        categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
+        return render_template('budget.html', budgets=budget_data, categories=categories)
+
+
 
 @app.route('/delete_budget/<int:budget_id>')
 def delete_budget(budget_id):

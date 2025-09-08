@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from '_macros.html' import render_account_options %}
 
 {% block content %}
 <h1 class="mb-4">Budget</h1>
@@ -9,9 +8,11 @@
 <form action="{{ url_for('budget') }}" method="post" class="p-3 border rounded mb-4">
     <div class="row g-3">
         <div class="col-md-4">
-            <label for="account_id" class="form-label">Account</label>
-            <select id="account_id" name="account_id" class="form-select" required>
-                {{ render_account_options(accounts) }}
+            <label for="category" class="form-label">Category</label>
+            <select id="category" name="category" class="form-select" required>
+                {% for category in categories %}
+                    <option value="{{ category }}">{{ category }}</option>
+                {% endfor %}
             </select>
         </div>
         <div class="col-md-2">
@@ -41,7 +42,7 @@
 <table class="table table-striped" id="budgets-table">
     <thead>
         <tr>
-            <th>Account</th>
+            <th>Category</th>
             <th>Period</th>
             <th>Start Date</th>
             <th class="text-end">Budgeted</th>
@@ -53,7 +54,7 @@
     <tbody>
         {% for budget in budgets %}
         <tr>
-            <td>{{ budget.account_name }}</td>
+            <td>{{ budget.category_name }}</td>
             <td>{{ budget.period }}</td>
             <td>{{ budget.start_date }}</td>
             <td class="text-end">{{ "%.2f"|format(budget.amount) }}</td>
@@ -73,7 +74,6 @@
 {% block scripts %}
 <script>
 $(document).ready(function() {
-    $('#account_id').select2();
     $('#budgets-table').DataTable();
 });
 </script>
