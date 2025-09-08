@@ -30,6 +30,7 @@
                 <th>Source Account</th>
                 <th>Debit Account</th>
                 <th>Credit Account</th>
+                <th>Vendor</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -50,6 +51,14 @@
                 <td>
                     <select name="credit_account_{{ transaction.id }}" class="form-control credit-account-select">
                         {{ render_account_options(accounts, selected_id=transaction.credit_account_id) }}
+                    </select>
+                </td>
+                <td>
+                    <select name="vendor_id_{{ transaction.id }}" class="form-control vendor-select">
+                        <option value="">None</option>
+                        {% for vendor in vendors %}
+                            <option value="{{ vendor.id }}" {% if transaction.vendor_id == vendor.id %}selected{% endif %}>{{ vendor.name }}</option>
+                        {% endfor %}
                     </select>
                 </td>
                 <td>
@@ -74,6 +83,7 @@
                 <th>Source Account</th>
                 <th>Debit Account</th>
                 <th>Credit Account</th>
+                <th>Vendor</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -94,6 +104,14 @@
                 <td>
                     <select name="credit_account_{{ transaction.id }}" class="form-control credit-account-select">
                         {{ render_account_options(accounts, selected_id=transaction.credit_account_id) }}
+                    </select>
+                </td>
+                <td>
+                    <select name="vendor_id_{{ transaction.id }}" class="form-control vendor-select">
+                        <option value="">None</option>
+                        {% for vendor in vendors %}
+                            <option value="{{ vendor.id }}" {% if transaction.vendor_id == vendor.id %}selected{% endif %}>{{ vendor.name }}</option>
+                        {% endfor %}
                     </select>
                 </td>
                 <td>

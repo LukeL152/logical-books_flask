@@ -254,7 +254,9 @@ class Transaction(db.Model):
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendor.id'), nullable=True)
     source_account = db.relationship('Account', foreign_keys=[source_account_id])
+    vendor = db.relationship('Vendor', foreign_keys=[vendor_id])
 
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -349,12 +351,20 @@ def add_transaction():
         date = request.form['date']
         description = request.form['description']
         amount = abs(float(request.form['amount']))
-        new_transaction = Transaction(date=date, description=description, amount=amount, client_id=session['client_id'])
+        vendor_id = request.form.get('vendor_id')
+        new_transaction = Transaction(
+            date=date, 
+            description=description, 
+            amount=amount, 
+            vendor_id=vendor_id if vendor_id else None,
+            client_id=session['client_id']
+        )
         db.session.add(new_transaction)
         db.session.commit()
         flash('Transaction added successfully.', 'success')
         return redirect(url_for('transactions'))
-    return render_template('add_transaction.html')
+    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
+    return render_template('add_transaction.html', vendors=vendors)
 
 @app.route('/edit_transaction/<int:transaction_id>', methods=['GET', 'POST'])
 def edit_transaction(transaction_id):
@@ -365,10 +375,12 @@ def edit_transaction(transaction_id):
         transaction.date = request.form['date']
         transaction.description = request.form['description']
         transaction.amount = abs(float(request.form['amount']))
+        transaction.vendor_id = request.form.get('vendor_id') if request.form.get('vendor_id') else None
         db.session.commit()
         flash('Transaction updated successfully.', 'success')
         return redirect(url_for('transactions'))
-    return render_template('edit_transaction.html', transaction=transaction)
+    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
+    return render_template('edit_transaction.html', transaction=transaction, vendors=vendors)
 
 @app.route('/delete_transaction/<int:transaction_id>')
 def delete_transaction(transaction_id):
@@ -433,7 +445,8 @@ def unapproved_transactions():
     unmodified_transactions = [t for t in all_transactions if not t.rule_modified]
 
     account_choices = get_account_choices(session['client_id'])
-    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
+    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
+    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices, vendors=vendors)
 
 @app.route('/delete_duplicates')
 def delete_duplicates():
@@ -468,10 +481,13 @@ def approve_transactions():
 
         debit_account_id = request.form.get(f'debit_account_{transaction_id}')
         credit_account_id = request.form.get(f'credit_account_{transaction_id}')
+        vendor_id = request.form.get(f'vendor_id_{transaction_id}')
 
         if not debit_account_id or not credit_account_id:
             flash(f'Debit and credit accounts must be selected for transaction {transaction.id}.', 'danger')
             continue
+
+        transaction.vendor_id = vendor_id if vendor_id else None
 
         new_entry = JournalEntry(
             date=transaction.date,
