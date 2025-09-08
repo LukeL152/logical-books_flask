@@ -139,6 +139,9 @@ This application is designed to help you follow the bookkeeping cycle.
     -   `/income_statement`
     -   `/balance_sheet`
     -   `/statement_of_cash_flows`
+-   **Reconciliation:** The `/reconcile` feature allows you to match your internal records with bank statements, ensuring accuracy. The live summary helps you balance your accounts quickly.
+-   **Duplicate Detection:** The `/unapproved` and `/journal` pages now highlight potential duplicate transactions, helping you maintain clean data.
+-   **Vendor Management:** Track your vendors using the new `/vendors` section, allowing for better organization of your payables.
 -   **Closing the Books:** While the app doesn't have an automated "closing" button, the process is managed by using the date filters on the financial statements. You can run an Income Statement for a specific period (e.g., a year), and the net income from that statement is the amount that would be transferred to Retained Earnings in a manual closing process.
 
 ---
