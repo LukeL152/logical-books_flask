@@ -16,15 +16,7 @@
                 <label for="amount" class="form-label">Amount:</label>
                 <input type="number" step="0.01" id="amount" name="amount" class="form-control" required>
             </div>
-            <div class="col-md-2">
-                <label for="vendor_id" class="form-label">Vendor:</label>
-                <select id="vendor_id" name="vendor_id" class="form-select">
-                    <option value="">None</option>
-                    {% for vendor in vendors %}
-                        <option value="{{ vendor.id }}">{{ vendor.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+            
             <div class="col-12">
                 <button type="submit" class="btn btn-success">Add Transaction</button>
                 <a href="{{ url_for('transactions') }}" class="btn btn-secondary">Cancel</a>
@@ -32,3 +24,4 @@
         </div>
     </form>
 {% endblock %}
+

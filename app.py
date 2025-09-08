@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import UserMixin
@@ -10,13 +10,23 @@ import io
 from datetime import datetime, timedelta
 from collections import defaultdict, OrderedDict
 import json
+from json import JSONEncoder
 import markdown
 
 import os
 
 from markupsafe import Markup
 
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, timedelta):
+            return str(obj)
+        return JSONEncoder.default(self, obj)
+
 app = Flask(__name__)
+app.json_encoder = CustomJSONEncoder
 
 @app.template_filter('nl2br')
 def nl2br(s):
@@ -88,7 +98,7 @@ class Account(db.Model):
 class JournalEntry(db.Model):
     __tablename__ = 'journal_entries'
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
+    date = db.Column(db.Date, nullable=False)
     description = db.Column(db.String(200))
     debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
@@ -99,7 +109,7 @@ class JournalEntry(db.Model):
     locked = db.Column(db.Boolean, nullable=False, default=False)
     is_accrual = db.Column(db.Boolean, nullable=True, default=False)
     is_reversing = db.Column(db.Boolean, nullable=False, default=False)
-    reversal_date = db.Column(db.String(10), nullable=True)
+    reversal_date = db.Column(db.Date, nullable=True)
     status = db.Column(db.String(20), nullable=False, default='posted') # posted, voided
     transaction_type = db.Column(db.String(20), nullable=True)
     transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'))
@@ -112,7 +122,7 @@ class JournalEntry(db.Model):
 class Reconciliation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
-    statement_date = db.Column(db.String(10), nullable=False)
+    statement_date = db.Column(db.Date, nullable=False)
     statement_balance = db.Column(db.Float, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
@@ -145,7 +155,7 @@ class Budget(db.Model):
     account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     period = db.Column(db.String(20), nullable=False, default='monthly') # monthly, quarterly, yearly
-    start_date = db.Column(db.String(10), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     account = db.relationship('Account', backref='budgets')
 
@@ -171,8 +181,8 @@ class TransactionRule(db.Model):
 
 class FinancialPeriod(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    start_date = db.Column(db.String(10), nullable=False)
-    end_date = db.Column(db.String(10), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
     is_closed = db.Column(db.Boolean, nullable=False, default=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
@@ -194,7 +204,7 @@ class FixedAsset(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(200))
-    purchase_date = db.Column(db.String(10), nullable=False)
+    purchase_date = db.Column(db.Date, nullable=False)
     cost = db.Column(db.Float, nullable=False)
     useful_life = db.Column(db.Integer, nullable=False) # in years
     salvage_value = db.Column(db.Float, nullable=False, default=0.0)
@@ -202,7 +212,7 @@ class FixedAsset(db.Model):
 
 class Depreciation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
+    date = db.Column(db.Date, nullable=False)
     amount = db.Column(db.Float, nullable=False)
     fixed_asset_id = db.Column(db.Integer, db.ForeignKey('fixed_asset.id'), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
@@ -223,7 +233,7 @@ class Inventory(db.Model):
 
 class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
+    date = db.Column(db.Date, nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     price = db.Column(db.Float, nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
@@ -236,15 +246,15 @@ class RecurringTransaction(db.Model):
     description = db.Column(db.String(200))
     amount = db.Column(db.Float, nullable=False)
     frequency = db.Column(db.String(20), nullable=False) # daily, weekly, monthly, yearly
-    start_date = db.Column(db.String(10), nullable=False)
-    end_date = db.Column(db.String(10))
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date)
     debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(10), nullable=False)
+    date = db.Column(db.Date, nullable=False)
     description = db.Column(db.String(200))
     amount = db.Column(db.Float, nullable=False)
     category = db.Column(db.String(100), nullable=True)
@@ -254,9 +264,7 @@ class Transaction(db.Model):
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    vendor_id = db.Column(db.Integer, db.ForeignKey('vendor.id'), nullable=True)
     source_account = db.relationship('Account', foreign_keys=[source_account_id])
-    vendor = db.relationship('Vendor', foreign_keys=[vendor_id])
 
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -281,9 +289,9 @@ def create_recurring_journal_entries():
         recurring_transactions = RecurringTransaction.query.filter_by(client_id=session['client_id']).all()
         for transaction in recurring_transactions:
             # Check if the transaction is due
-            start_date = datetime.strptime(transaction.start_date, '%Y-%m-%d')
+            start_date = transaction.start_date
             if transaction.end_date:
-                end_date = datetime.strptime(transaction.end_date, '%Y-%m-%d')
+                end_date = transaction.end_date
                 if today < start_date or today > end_date:
                     continue
             elif today < start_date:
@@ -292,7 +300,7 @@ def create_recurring_journal_entries():
             # Check if a journal entry has already been created for the current period
             last_journal_entry = JournalEntry.query.filter_by(description=transaction.description).order_by(JournalEntry.date.desc()).first()
             if last_journal_entry:
-                last_journal_entry_date = datetime.strptime(last_journal_entry.date, '%Y-%m-%d')
+                last_journal_entry_date = last_journal_entry.date
                 if transaction.frequency == 'monthly' and last_journal_entry_date.year == today.year and last_journal_entry_date.month == today.month:
                     continue
                 elif transaction.frequency == 'weekly' and last_journal_entry_date.isocalendar()[1] == today.isocalendar()[1]:
@@ -304,7 +312,7 @@ def create_recurring_journal_entries():
 
             # Create a new journal entry
             new_entry = JournalEntry(
-                date=today.strftime('%Y-%m-%d'),
+                date=today.date(),
                 description=transaction.description,
                 debit_account_id=transaction.debit_account_id,
                 credit_account_id=transaction.credit_account_id,
@@ -348,23 +356,20 @@ def transactions():
 @app.route('/add_transaction', methods=['GET', 'POST'])
 def add_transaction():
     if request.method == 'POST':
-        date = request.form['date']
+        date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
         description = request.form['description']
         amount = abs(float(request.form['amount']))
-        vendor_id = request.form.get('vendor_id')
         new_transaction = Transaction(
             date=date, 
             description=description, 
-            amount=amount, 
-            vendor_id=vendor_id if vendor_id else None,
+            amount=amount,
             client_id=session['client_id']
         )
         db.session.add(new_transaction)
         db.session.commit()
         flash('Transaction added successfully.', 'success')
         return redirect(url_for('transactions'))
-    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
-    return render_template('add_transaction.html', vendors=vendors)
+    return render_template('add_transaction.html')
 
 @app.route('/edit_transaction/<int:transaction_id>', methods=['GET', 'POST'])
 def edit_transaction(transaction_id):
@@ -372,15 +377,13 @@ def edit_transaction(transaction_id):
     if transaction.client_id != session['client_id']:
         return "Unauthorized", 403
     if request.method == 'POST':
-        transaction.date = request.form['date']
+        transaction.date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
         transaction.description = request.form['description']
         transaction.amount = abs(float(request.form['amount']))
-        transaction.vendor_id = request.form.get('vendor_id') if request.form.get('vendor_id') else None
         db.session.commit()
         flash('Transaction updated successfully.', 'success')
         return redirect(url_for('transactions'))
-    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
-    return render_template('edit_transaction.html', transaction=transaction, vendors=vendors)
+    return render_template('edit_transaction.html', transaction=transaction)
 
 @app.route('/delete_transaction/<int:transaction_id>')
 def delete_transaction(transaction_id):
@@ -445,8 +448,7 @@ def unapproved_transactions():
     unmodified_transactions = [t for t in all_transactions if not t.rule_modified]
 
     account_choices = get_account_choices(session['client_id'])
-    vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
-    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices, vendors=vendors)
+    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
 
 @app.route('/delete_duplicates')
 def delete_duplicates():
@@ -481,13 +483,10 @@ def approve_transactions():
 
         debit_account_id = request.form.get(f'debit_account_{transaction_id}')
         credit_account_id = request.form.get(f'credit_account_{transaction_id}')
-        vendor_id = request.form.get(f'vendor_id_{transaction_id}')
 
         if not debit_account_id or not credit_account_id:
             flash(f'Debit and credit accounts must be selected for transaction {transaction.id}.', 'danger')
             continue
-
-        transaction.vendor_id = vendor_id if vendor_id else None
 
         new_entry = JournalEntry(
             date=transaction.date,
@@ -591,11 +590,13 @@ def bulk_assign_accounts():
         flash('Please select both a debit and a credit account.', 'danger')
         return redirect(url_for('unapproved_transactions'))
 
-    Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update({
+    update_data = {
         'debit_account_id': debit_account_id,
         'credit_account_id': credit_account_id,
         'rule_modified': True
-    }, synchronize_session=False)
+    }
+
+    Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update(update_data, synchronize_session=False)
 
     db.session.commit()
     flash(f'{len(transaction_ids)} transactions updated successfully.', 'success')
@@ -801,13 +802,13 @@ def delete_vendor(vendor_id):
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
-    today = datetime.now()
+    today = datetime.now().date()
     start_date = None
     end_date = today
 
     if request.method == 'POST':
-        start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
-        end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
+        start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
+        end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
     else:
         period = request.args.get('period')
         if period == 'ytd':
@@ -818,14 +819,6 @@ def dashboard():
             start_date = today - timedelta(days=90)
         else: # Default to last 6 months
             start_date = today - timedelta(days=180)
-    
-    # Ensure start_date is a datetime object
-    if not isinstance(start_date, datetime):
-        start_date = datetime.strptime(start_date.strftime('%Y-%m-%d'), '%Y-%m-%d')
-
-    # Convert to string for database query
-    start_date_str = start_date.strftime('%Y-%m-%d')
-    end_date_str = end_date.strftime('%Y-%m-%d')
 
     # Monthly data for bar chart
     income_by_month_query = db.session.query(
@@ -834,8 +827,8 @@ def dashboard():
     ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
         Account.type.in_(['Revenue', 'Income']),
         JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date
     ).group_by('month')
 
     expense_by_month_query = db.session.query(
@@ -844,8 +837,8 @@ def dashboard():
     ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
         JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date
     ).group_by('month')
 
     income_by_month = {r.month: r.total for r in income_by_month_query.all()}
@@ -864,8 +857,8 @@ def dashboard():
     ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
         JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str,
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date,
         JournalEntry.category is not None,
         JournalEntry.category != ''
     ).group_by(JournalEntry.category)
@@ -882,8 +875,8 @@ def dashboard():
     ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
         Account.type.in_(['Revenue', 'Income']),
         JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date_str,
-        JournalEntry.date <= end_date_str,
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date,
         JournalEntry.category is not None,
         JournalEntry.category != ''
     ).group_by(JournalEntry.category)
@@ -960,8 +953,10 @@ def category_transactions(category_name):
 
 @app.route('/full_pie_chart_expenses')
 def full_pie_chart_expenses():
-    start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
-    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    start_date_str = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
+    end_date_str = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
     expense_breakdown_query = db.session.query(
         JournalEntry.category,
@@ -980,12 +975,14 @@ def full_pie_chart_expenses():
     pie_chart_labels = json.dumps([item.category for item in expense_breakdown])
     pie_chart_data = json.dumps([item.total for item in expense_breakdown])
 
-    return render_template('full_pie_chart.html', title='Expense Breakdown', labels=pie_chart_labels, data=pie_chart_data, start_date=start_date, end_date=end_date)
+    return render_template('full_pie_chart.html', title='Expense Breakdown', labels=pie_chart_labels, data=pie_chart_data, start_date=start_date.strftime('%Y-%m-%d'), end_date=end_date.strftime('%Y-%m-%d'))
 
 @app.route('/full_pie_chart_income')
 def full_pie_chart_income():
-    start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
-    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    start_date_str = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
+    end_date_str = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
     income_breakdown_query = db.session.query(
         JournalEntry.category,
@@ -1004,7 +1001,7 @@ def full_pie_chart_income():
     pie_chart_labels = json.dumps([item.category for item in income_breakdown])
     pie_chart_data = json.dumps([item.total for item in income_breakdown])
 
-    return render_template('full_pie_chart.html', title='Income Breakdown', labels=pie_chart_labels, data=pie_chart_data, start_date=start_date, end_date=end_date)
+    return render_template('full_pie_chart.html', title='Income Breakdown', labels=pie_chart_labels, data=pie_chart_data, start_date=start_date.strftime('%Y-%m-%d'), end_date=end_date.strftime('%Y-%m-%d'))
 
 @app.route('/accounts')
 def accounts():
@@ -1150,7 +1147,7 @@ def journal():
 
 @app.route('/add_entry', methods=['POST'])
 def add_entry():
-    date = request.form['date']
+    date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
     description = request.form['description']
     debit_account_id = request.form['debit_account_id']
     credit_account_id = request.form['credit_account_id']
@@ -1170,7 +1167,7 @@ def edit_entry(entry_id):
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
     if request.method == 'POST':
-        entry.date = request.form['date']
+        entry.date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
         entry.description = request.form['description']
         entry.debit_account_id = request.form['debit_account_id']
         entry.credit_account_id = request.form['credit_account_id']
@@ -1449,7 +1446,8 @@ def import_csv():
         transactions = []
         for row in csv_reader:
             try:
-                date = normalize_date(row[template.date_col])
+                date_str = normalize_date(row[template.date_col])
+                date = datetime.strptime(date_str, '%Y-%m-%d').date()
                 description = row[template.description_col]
                 row[template.notes_col] if template.notes_col is not None else None
                 
@@ -1634,7 +1632,7 @@ def reconcile_account(account_id):
         return "Unauthorized", 403
 
     if request.method == 'POST':
-        statement_date = request.form['statement_date']
+        statement_date = datetime.strptime(request.form['statement_date'], '%Y-%m-%d').date()
         statement_balance = float(request.form['statement_balance'])
         journal_entry_ids = request.form.getlist('journal_entry_ids')
 
@@ -1737,7 +1735,7 @@ def budget():
         account_id = request.form['account_id']
         amount = abs(float(request.form['amount']))
         period = request.form['period']
-        start_date = request.form['start_date']
+        start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
 
         # Check if a budget for this account and period already exists
         if Budget.query.filter_by(account_id=account_id, period=period, start_date=start_date, client_id=session['client_id']).first():
@@ -1760,7 +1758,7 @@ def budget():
         budget_data = []
         for b in budgets:
             # Calculate actual spending for the budget period
-            start = datetime.strptime(b.start_date, '%Y-%m-%d')
+            start = b.start_date
             if b.period == 'monthly':
                 end = start.replace(day=28) + timedelta(days=4) # last day of month
                 end = end - timedelta(days=end.day)
@@ -1772,7 +1770,7 @@ def budget():
             actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
                 .filter(JournalEntry.debit_account_id == b.account_id) \
                 .filter(JournalEntry.date >= b.start_date) \
-                .filter(JournalEntry.date <= end.strftime('%Y-%m-%d')) \
+                .filter(JournalEntry.date <= end.date()) \
                 .scalar() or 0
 
             budget_data.append({
@@ -2127,7 +2125,7 @@ def sales():
 def add_sale():
     products = Product.query.filter_by(client_id=session['client_id']).order_by(Product.name).all()
     if request.method == 'POST':
-        date = request.form['date']
+        date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
         product_id = request.form['product_id']
         quantity = int(request.form['quantity'])
         price = float(request.form['price'])
@@ -2227,8 +2225,9 @@ def approve_recurring_transaction():
     description = request.form['description']
     amount = abs(float(request.form['amount']))
     frequency = request.form['frequency']
-    start_date = request.form['start_date']
-    end_date = request.form['end_date']
+    start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
+    end_date_str = request.form['end_date']
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date() if end_date_str else None
     debit_account_id = request.form['debit_account_id']
     credit_account_id = request.form['credit_account_id']
 
@@ -2257,7 +2256,7 @@ def reverse_accruals():
             for accrual in accruals_to_reverse:
                 # Create a reversing entry
                 new_entry = JournalEntry(
-                    date=today.strftime('%Y-%m-%d'),
+                    date=today.date(),
                     description=f"Reversal of: {accrual.description}",
                     debit_account_id=accrual.credit_account_id,
                     credit_account_id=accrual.debit_account_id,
@@ -2289,8 +2288,8 @@ def detect_recurring_transactions():
                 # Calculate the time difference between transactions
                 time_diffs = []
                 for i in range(len(transaction_group) - 1):
-                    date1 = datetime.strptime(transaction_group[i].date, '%Y-%m-%d')
-                    date2 = datetime.strptime(transaction_group[i+1].date, '%Y-%m-%d')
+                    date1 = transaction_group[i].date
+                    date2 = transaction_group[i+1].date
                     time_diffs.append((date2 - date1).days)
 
                 # If the time differences are consistent, it's a recurring transaction
@@ -2330,7 +2329,7 @@ def add_fixed_asset():
     if request.method == 'POST':
         name = request.form['name']
         description = request.form['description']
-        purchase_date = request.form['purchase_date']
+        purchase_date = datetime.strptime(request.form['purchase_date'], '%Y-%m-%d').date()
         cost = abs(float(request.form['cost']))
         useful_life = int(request.form['useful_life'])
         salvage_value = float(request.form['salvage_value'])
@@ -2381,7 +2380,7 @@ def depreciation_schedule(asset_id):
         accumulated_depreciation += entry.amount
         book_value -= entry.amount
         schedule.append({
-            'date': entry.date,
+            'date': entry.date.strftime('%Y-%m-%d'),
             'amount': entry.amount,
             'accumulated_depreciation': accumulated_depreciation,
             'book_value': book_value
@@ -2400,13 +2399,13 @@ def calculate_and_record_depreciation():
             # Check if depreciation has already been recorded for the current month
             last_depreciation = Depreciation.query.filter_by(fixed_asset_id=asset.id).order_by(Depreciation.date.desc()).first()
             if last_depreciation:
-                last_depreciation_date = datetime.strptime(last_depreciation.date, '%Y-%m-%d')
+                last_depreciation_date = last_depreciation.date
                 if last_depreciation_date.year == today.year and last_depreciation_date.month == today.month:
                     continue
 
             # Record depreciation for the current month
             new_depreciation = Depreciation(
-                date=today.strftime('%Y-%m-%d'),
+                date=today.date(),
                 amount=abs(monthly_depreciation),
                 fixed_asset_id=asset.id,
                 client_id=session['client_id']
@@ -2419,7 +2418,7 @@ def calculate_and_record_depreciation():
 
             if depreciation_expense_account and accumulated_depreciation_account:
                 new_entry = JournalEntry(
-                    date=today.strftime('%Y-%m-%d'),
+                    date=today.date(),
                     description=f"Depreciation for {asset.name}",
                     debit_account_id=depreciation_expense_account.id,
                     credit_account_id=accumulated_depreciation_account.id,
@@ -2432,32 +2431,27 @@ def calculate_and_record_depreciation():
 
 @app.route('/api/transaction_analysis')
 def transaction_analysis():
-    start_date = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
-    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    start_date_str = request.args.get('start_date', datetime.now().replace(day=1).strftime('%Y-%m-%d'))
+    end_date_str = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
-    query = db.session.query(
-        JournalEntry.date,
-        JournalEntry.description,
-        JournalEntry.amount,
-        JournalEntry.category,
-        Account.name.label('account_name'),
-        Vendor.name.label('vendor_name')
-    ).filter(
+    query = db.session.query(JournalEntry).filter(
         JournalEntry.client_id == session['client_id'],
         JournalEntry.date >= start_date,
         JournalEntry.date <= end_date
-    ).join(Account, JournalEntry.debit_account_id == Account.id).outerjoin(Transaction).outerjoin(Vendor)
+    )
 
     results = query.all()
 
     data = [
         {
-            'date': r.date,
+            'date': r.date.strftime('%Y-%m-%d'),
             'description': r.description,
             'amount': r.amount,
             'category': r.category,
-            'account': r.account_name,
-            'vendor': r.vendor_name
+            'debit_account': r.debit_account.name if r.debit_account else '',
+            'credit_account': r.credit_account.name if r.credit_account else '',
         } for r in results
     ]
 
