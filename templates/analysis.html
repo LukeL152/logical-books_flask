@@ -3,12 +3,34 @@
 {% block content %}
 <h1 class="mb-4">Analysis</h1>
 
+<form method="POST" action="{{ url_for('analysis') }}" class="mb-4">
+    <div class="row">
+        <div class="col-md-6">
+            <h5>Period 1</h5>
+            <div class="input-group">
+                <input type="date" name="start_date_1" class="form-control" value="{{ start_date_1 }}">
+                <span class="input-group-text">to</span>
+                <input type="date" name="end_date_1" class="form-control" value="{{ end_date_1 }}">
+            </div>
+        </div>
+        <div class="col-md-6">
+            <h5>Period 2</h5>
+            <div class="input-group">
+                <input type="date" name="start_date_2" class="form-control" value="{{ start_date_2 }}">
+                <span class="input-group-text">to</span>
+                <input type="date" name="end_date_2" class="form-control" value="{{ end_date_2 }}">
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Compare</button>
+</form>
+
 <ul class="nav nav-tabs" id="analysisTab" role="tablist">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="spending-by-category-tab" data-bs-toggle="tab" data-bs-target="#spending-by-category" type="button" role="tab" aria-controls="spending-by-category" aria-selected="true">Spending by Category</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="spending-by-vendor-tab" data-bs-toggle="tab" data-bs-target="#spending-by-vendor" type="button" role="tab" aria-controls="spending-by-vendor" aria-selected="false">Spending by Vendor</button>
+        <button class="nav-link" id="category-comparison-tab" data-bs-toggle="tab" data-bs-target="#category-comparison" type="button" role="tab" aria-controls="category-comparison" aria-selected="false">Category Comparison</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="income-vs-expense-tab" data-bs-toggle="tab" data-bs-target="#income-vs-expense" type="button" role="tab" aria-controls="income-vs-expense" aria-selected="false">Income vs. Expense</button>
@@ -20,7 +42,7 @@
 
 <div class="tab-content" id="analysisTabContent">
     <div class="tab-pane fade show active" id="spending-by-category" role="tabpanel" aria-labelledby="spending-by-category-tab">
-        <h2 class="mt-4">Spending by Category</h2>
+        <h2 class="mt-4">Spending by Category (Period 1)</h2>
         <div class="row">
             <div class="col-md-6">
                 <canvas id="categoryPieChart"></canvas>
@@ -36,8 +58,8 @@
                     <tbody>
                         {% for item in spending_by_category %}
                         <tr>
-                            <td><a href="{{ url_for('category_transactions', category_name=item.category) }}">{{ item.category }}</a></td>
-                            <td class="text-end">{{ "%.2f"|format(item.total) }}</td>
+                            <td><a href="{{ url_for('category_transactions', category_name=item[0]) }}">{{ item[0] }}</a></td>
+                            <td class="text-end">{{ "%.2f"|format(item[1]) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -45,31 +67,9 @@
             </div>
         </div>
     </div>
-    <div class="tab-pane fade" id="spending-by-vendor" role="tabpanel" aria-labelledby="spending-by-vendor-tab">
-        <h2 class="mt-4">Spending by Vendor</h2>
-        <div class="row">
-            <div class="col-md-6">
-                <canvas id="vendorBarChart"></canvas>
-            </div>
-            <div class="col-md-6">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Vendor</th>
-                            <th class="text-end">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in spending_by_vendor %}
-                        <tr>
-                            <td>{{ item.name }}</td>
-                            <td class="text-end">{{ "%.2f"|format(item.total) }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+    <div class="tab-pane fade" id="category-comparison" role="tabpanel" aria-labelledby="category-comparison-tab">
+        <h2 class="mt-4">Category Comparison</h2>
+        <canvas id="categoryComparisonChart"></canvas>
     </div>
     <div class="tab-pane fade" id="income-vs-expense" role="tabpanel" aria-labelledby="income-vs-expense-tab">
         <h2 class="mt-4">Income vs. Expense</h2>
@@ -191,19 +191,28 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Bar Chart for Spending by Vendor
-    var barCtx = document.getElementById('vendorBarChart').getContext('2d');
-    var barChart = new Chart(barCtx, {
+    // Bar Chart for Category Comparison
+    var categoryComparisonCtx = document.getElementById('categoryComparisonChart').getContext('2d');
+    var categoryComparisonChart = new Chart(categoryComparisonCtx, {
         type: 'bar',
         data: {
-            labels: {{ vendor_labels|safe }},
-            datasets: [{
-                label: 'Total Spending',
-                data: {{ vendor_data|safe }},
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                borderColor: 'rgba(75, 192, 192, 1)',
-                borderWidth: 1
-            }]
+            labels: {{ category_comparison_labels|safe }},
+            datasets: [
+                {
+                    label: 'Period 1',
+                    data: {{ category_comparison_data_1|safe }},
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Period 2',
+                    data: {{ category_comparison_data_2|safe }},
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }
+            ]
         },
         options: {
             scales: {

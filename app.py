@@ -268,9 +268,7 @@ class Transaction(db.Model):
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    vendor_id = db.Column(db.Integer, db.ForeignKey('vendor.id'), nullable=True)
     source_account = db.relationship('Account', foreign_keys=[source_account_id])
-    vendor = db.relationship('Vendor', foreign_keys=[vendor_id])
 
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -986,36 +984,52 @@ def dashboard():
                            end_date=end_date.strftime('%Y-%m-%d'),
                            performance_data=performance_data)
 
-@app.route('/analysis')
-def analysis():
-    # Spending by Category
-    spending_by_category_query = db.session.query(
+def get_spending_by_category(start_date, end_date):
+    spending_query = db.session.query(
         JournalEntry.category,
         db.func.sum(JournalEntry.amount).label('total')
     ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
         JournalEntry.client_id == session['client_id'],
         JournalEntry.category is not None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+        JournalEntry.category != '',
+        JournalEntry.date.between(start_date, end_date)
+    ).group_by(JournalEntry.category)
+    
+    return {item.category: item.total for item in spending_query.all()}
 
-    spending_by_category = spending_by_category_query.all()
+@app.route('/analysis', methods=['GET', 'POST'])
+def analysis():
+    if request.method == 'POST':
+        start_date_1 = datetime.strptime(request.form['start_date_1'], '%Y-%m-%d').date()
+        end_date_1 = datetime.strptime(request.form['end_date_1'], '%Y-%m-%d').date()
+        start_date_2 = datetime.strptime(request.form['start_date_2'], '%Y-%m-%d').date()
+        end_date_2 = datetime.strptime(request.form['end_date_2'], '%Y-%m-%d').date()
+    else:
+        # Default to this month vs. last month
+        today = datetime.now().date()
+        start_date_1 = today.replace(day=1)
+        end_date_1 = today
+        
+        last_month_end = start_date_1 - timedelta(days=1)
+        start_date_2 = last_month_end.replace(day=1)
+        end_date_2 = last_month_end
 
-    category_labels = json.dumps([item.category for item in spending_by_category])
-    category_data = json.dumps([item.total for item in spending_by_category])
+    # Spending by Category for period 1 (for the pie chart)
+    spending_by_category_1_dict = get_spending_by_category(start_date_1, end_date_1)
+    spending_by_category_1 = sorted(spending_by_category_1_dict.items(), key=lambda item: item[1], reverse=True)
 
-    # Spending by Vendor
-    spending_by_vendor_query = db.session.query(
-        Vendor.name,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Transaction, Vendor.id == Transaction.vendor_id).join(JournalEntry, Transaction.id == JournalEntry.transaction_id).filter(
-        JournalEntry.client_id == session['client_id']
-    ).group_by(Vendor.name).order_by(db.func.sum(JournalEntry.amount).desc())
+    category_labels = json.dumps([item[0] for item in spending_by_category_1])
+    category_data = json.dumps([item[1] for item in spending_by_category_1])
 
-    spending_by_vendor = spending_by_vendor_query.all()
+    # Data for category comparison bar chart
+    spending_by_category_2_dict = get_spending_by_category(start_date_2, end_date_2)
+    all_categories = sorted(list(set(spending_by_category_1_dict.keys()) | set(spending_by_category_2_dict.keys())))
+    
+    category_comparison_labels = json.dumps(all_categories)
+    category_comparison_data_1 = json.dumps([spending_by_category_1_dict.get(c, 0) for c in all_categories])
+    category_comparison_data_2 = json.dumps([spending_by_category_2_dict.get(c, 0) for c in all_categories])
 
-    vendor_labels = json.dumps([item.name for item in spending_by_vendor])
-    vendor_data = json.dumps([item.total for item in spending_by_vendor])
 
     # Income vs. Expense Trend
     income_by_month_query = db.session.query(
@@ -1088,12 +1102,9 @@ def analysis():
     cash_at_end_of_period = cash_at_beginning_of_period + net_increase_in_cash
 
     return render_template('analysis.html', 
-                           spending_by_category=spending_by_category,
+                           spending_by_category=spending_by_category_1,
                            category_labels=category_labels,
                            category_data=category_data,
-                           spending_by_vendor=spending_by_vendor,
-                           vendor_labels=vendor_labels,
-                           vendor_data=vendor_data,
                            all_months=all_months,
                            income_trend_data=income_trend_data,
                            expense_trend_data=expense_trend_data,
@@ -1110,7 +1121,14 @@ def analysis():
                            net_cash_from_financing_activities=net_cash_from_financing_activities,
                            net_increase_in_cash=net_increase_in_cash,
                            cash_at_beginning_of_period=cash_at_beginning_of_period,
-                           cash_at_end_of_period=cash_at_end_of_period
+                           cash_at_end_of_period=cash_at_end_of_period,
+                           start_date_1=start_date_1.strftime('%Y-%m-%d'),
+                           end_date_1=end_date_1.strftime('%Y-%m-%d'),
+                           start_date_2=start_date_2.strftime('%Y-%m-%d'),
+                           end_date_2=end_date_2.strftime('%Y-%m-%d'),
+                           category_comparison_labels=category_comparison_labels,
+                           category_comparison_data_1=category_comparison_data_1,
+                           category_comparison_data_2=category_comparison_data_2
                            )
 
 
