@@ -12,7 +12,7 @@ from collections import defaultdict, OrderedDict
 import json
 from json import JSONEncoder
 import markdown
-from plaid import Client as PlaidClient
+import plaid
 from plaid.api import plaid_api
 from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
