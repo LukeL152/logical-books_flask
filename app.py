@@ -99,8 +99,11 @@ class PlaidItem(db.Model):
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     item_id = db.Column(db.String(100), nullable=False, unique=True)
     access_token = db.Column(db.String(100), nullable=False)
+    institution_name = db.Column(db.String(100), nullable=True)
     last_synced = db.Column(db.DateTime, nullable=True)
     client = db.relationship('Client', backref=db.backref('plaid_items', lazy=True))
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id', name='fk_plaid_item_account_id'), nullable=True)
+    account = db.relationship('Account', backref=db.backref('plaid_items', lazy=True))
 
 class Vendor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -2696,7 +2699,8 @@ def transaction_analysis_page():
 @app.route('/plaid')
 def plaid():
     plaid_items = PlaidItem.query.filter_by(client_id=session['client_id']).all()
-    return render_template('plaid.html', plaid_items=plaid_items)
+    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
+    return render_template('plaid.html', plaid_items=plaid_items, accounts=accounts)
 
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
@@ -2733,7 +2737,8 @@ def exchange_public_token():
         new_item = PlaidItem(
             client_id=session['client_id'],
             item_id=item_id,
-            access_token=access_token
+            access_token=access_token,
+            institution_name=request.json['institution_name']
         )
         db.session.add(new_item)
         db.session.commit()
@@ -2775,7 +2780,7 @@ def sync_transactions():
                 category=t['category'][0] if t['category'] else None,
                 client_id=session['client_id'],
                 is_approved=False,
-                source_account_id=None # We don't have a good way to map this yet
+                source_account_id=item.account_id
             )
             db.session.add(new_transaction)
 
@@ -2786,3 +2791,15 @@ def sync_transactions():
         return jsonify({'error': str(e)})
 
     return jsonify({'status': 'success', 'added': added_count})
+
+@app.route('/api/plaid/set_account', methods=['POST'])
+def set_plaid_account():
+    plaid_item_id = request.json['plaid_item_id']
+    account_id = request.json['account_id']
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+    
+    item.account_id = account_id
+    db.session.commit()
+    return jsonify({'status': 'success'})

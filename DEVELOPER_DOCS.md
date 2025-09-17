@@ -244,156 +244,31 @@ This document outlines the plan for integrating Plaid into the Logical Books app
 
 The goal of this integration is to allow users to securely link their bank accounts using Plaid Link, and then import their transactions directly into the application. This will significantly reduce manual data entry and improve the accuracy of the bookkeeping data.
 
-### Prerequisites
+### Current Status
 
-Before starting development, the following is required:
+The basic Plaid integration is implemented. Users can link their bank accounts, and the application can pull transactions.
 
-*   **Plaid Developer Account:** A Plaid developer account is needed to access the Plaid dashboard and obtain API keys.
-*   **API Keys:** You will need your `client_id` and `secret` from the Plaid dashboard.
-*   **Secure Key Storage:** These keys are highly sensitive and **must not** be hardcoded in the application or committed to version control. They should be stored as environment variables and loaded by the Flask application at runtime.
+### Completed Steps
 
-    Example of setting environment variables:
-    ```bash
-    export PLAID_CLIENT_ID='your_client_id'
-    export PLAID_SECRET='your_secret'
-    export PLAID_ENV='sandbox' # or 'development' or 'production'
-    ```
+*   **Prerequisites**:
+    *   Plaid developer account and API keys are set up as environment variables. **(Done)**
+*   **Database Schema Changes**:
+    *   `PlaidItem` model has been created to store `item_id`, `access_token`, `institution_name`, and `last_synced`. **(Done)**
+*   **Backend Implementation (Flask)**:
+    *   `plaid-python` library has been added to `requirements.txt`. **(Done)**
+    *   Plaid client is initialized in `app.py`. **(Done)**
+    *   API endpoints `POST /api/create_link_token`, `POST /api/exchange_public_token`, and `POST /api/transactions/sync` are implemented. **(Done)**
+*   **Frontend Implementation (HTML/JavaScript)**:
+    *   A `/plaid` page has been created with a "Link New Bank Account" button. **(Done)**
+    *   The Plaid Link flow is handled by JavaScript on the `/plaid` page. **(Done)**
+    *   The list of linked accounts is displayed on the `/plaid` page with the institution name. **(Done)**
+*   **Associate Plaid Items with Local Accounts**:
+    *   A dropdown menu on the `/plaid` page allows users to associate each Plaid item with a local `Account`. **(Done)**
+    *   An `account_id` has been added to the `PlaidItem` model to store this association. **(Done)**
+    *   The `POST /api/plaid/set_account` endpoint saves the association. **(Done)**
+    *   The `sync_transactions` function uses the `account_id` from the `PlaidItem` to set the `source_account_id` on new transactions. **(Done)**
 
-### Database Schema Changes
-
-A new database model will be created to store information about each linked bank account (an "Item" in Plaid terminology).
-
-**`PlaidItem` Model:**
-
-```python
-class PlaidItem(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    item_id = db.Column(db.String(100), nullable=False, unique=True)
-    access_token = db.Column(db.String(100), nullable=False)
-    last_synced = db.Column(db.DateTime, nullable=True)
-    client = db.relationship('Client', backref=db.backref('plaid_items', lazy=True))
-```
-
-This model will be added to `app.py`, and a new database migration will be created using the `./create_migration.sh` script.
-
-### Backend Implementation (Flask)
-
-The backend will handle the communication with the Plaid API.
-
-1.  **Installation:**
-    *   The `plaid-python` library will be added to the `requirements.txt` file.
-    ```
-    plaid-python
-    ```
-
-2.  **Configuration:**
-    *   In `app.py`, the Plaid API keys will be loaded from environment variables.
-    *   A Plaid client will be initialized.
-
-    ```python
-    from plaid import Client as PlaidClient
-    from plaid.api import plaid_api
-
-    # ... in app setup ...
-    plaid_client = PlaidClient(
-        client_id=os.environ.get('PLAID_CLIENT_ID'),
-        secret=os.environ.get('PLAID_SECRET'),
-        environment=os.environ.get('PLAID_ENV', 'sandbox'),
-    )
-    ```
-
-3.  **API Endpoints:**
-    *   **`POST /api/create_link_token`**
-        *   **Purpose:** To generate a `link_token` required to initialize the Plaid Link flow on the frontend.
-        *   **Logic:**
-            *   Takes the `client_id` from the current session.
-            *   Calls the Plaid client's `link_token_create` method.
-            *   Returns the `link_token` as JSON.
-
-    *   **`POST /api/exchange_public_token`**
-        *   **Purpose:** To exchange a `public_token` (received from the frontend after a successful link) for an `access_token`.
-        *   **Logic:**
-            *   Receives a `public_token` in the request body.
-            *   Calls the Plaid client's `item_public_token_exchange` method to get an `access_token` and `item_id`.
-            *   Creates a new `PlaidItem` record in the database, storing the `access_token`, `item_id`, and the current `client_id`.
-            *   Returns a success message.
-
-    *   **`POST /api/transactions/sync`**
-        *   **Purpose:** To fetch new transactions for a linked account.
-        *   **Logic:**
-            *   Takes a `plaid_item_id` as a parameter.
-            *   Retrieves the corresponding `PlaidItem` from the database to get the `access_token`.
-            *   Fetches transactions from the Plaid API using the `transactions_sync` method.
-            *   For each new transaction:
-                *   Performs duplicate detection to avoid creating duplicate entries.
-                *   Creates a new `Transaction` object in the database.
-                *   Applies any relevant transaction rules.
-            *   Updates the `last_synced` timestamp on the `PlaidItem`.
-            *   Returns a summary of the sync (e.g., number of new transactions).
-
-### Frontend Implementation (HTML/JavaScript)
-
-The frontend will be updated to allow users to link their accounts and trigger syncs.
-
-1.  **Plaid Link Script:**
-    *   The Plaid Link JavaScript library will be included in the `base.html` template or a new dedicated template for Plaid integration.
-    ```html
-    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-    ```
-
-2.  **UI for Linking Accounts:**
-    *   A new page, e.g., `/plaid`, will be created.
-    *   This page will have a "Link New Bank Account" button.
-    *   A JavaScript function will handle the Plaid Link flow:
-
-    ```javascript
-    // Example JavaScript for Plaid Link
-    const linkAccountButton = document.getElementById('link-account-button');
-
-    linkAccountButton.addEventListener('click', async () => {
-        // 1. Fetch a link_token from our backend
-        const response = await fetch('/api/create_link_token', { method: 'POST' });
-        const { link_token } = await response.json();
-
-        // 2. Initialize Plaid Link
-        const handler = Plaid.create({
-            token: link_token,
-            onSuccess: async (public_token, metadata) => {
-                // 3. Send the public_token to our backend
-                await fetch('/api/exchange_public_token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ public_token: public_token }),
-                });
-                // Optionally, refresh the page or show a success message
-                location.reload();
-            },
-            onExit: (err, metadata) => {
-                // Handle exit
-            }
-        });
-
-        // 4. Open the Plaid Link modal
-        handler.open();
-    });
-    ```
-
-3.  **UI for Syncing:**
-    *   The `/plaid` page will also list the already linked accounts (`PlaidItem`s).
-    *   Each item will have a "Sync Transactions" button.
-    *   Clicking this button will trigger a JavaScript function that calls the `/api/transactions/sync` endpoint for that item.
-
-### User Flow
-
-1.  The user navigates to the new "Bank Integrations" page.
-2.  They click "Link New Bank Account".
-3.  The Plaid Link modal opens, and they go through the process of selecting their bank and entering their credentials (handled securely by Plaid).
-4.  Upon successful linking, the modal closes, and the new account appears in the list of linked accounts on the page.
-5.  The user can then click "Sync Transactions" next to the account to import their latest transactions.
-6.  The imported transactions will appear in the "Unapproved Transactions" list, ready for categorization and approval.
-
-### Future Enhancements
+### Next Steps
 
 *   **Automatic Syncing:** Implement a background scheduler (using APScheduler, which is already in the project) to automatically sync transactions periodically.
 *   **Webhook Integration:** Use Plaid webhooks to receive real-time notifications about new transactions, instead of relying on manual or scheduled polling.
