@@ -12,6 +12,14 @@ from collections import defaultdict, OrderedDict
 import json
 from json import JSONEncoder
 import markdown
+from plaid import Client as PlaidClient
+from plaid.api import plaid_api
+from plaid.model.products import Products
+from plaid.model.country_code import CountryCode
+from plaid.model.link_token_create_request import LinkTokenCreateRequest
+from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
 import os
 
@@ -41,6 +49,31 @@ app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real applicatio
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'bookkeeping.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Plaid client setup
+PLAID_CLIENT_ID = os.environ.get('PLAID_CLIENT_ID')
+PLAID_SECRET = os.environ.get('PLAID_SECRET')
+PLAID_ENV = os.environ.get('PLAID_ENV', 'sandbox')
+
+if PLAID_ENV == 'sandbox':
+    host = plaid.Environment.Sandbox
+elif PLAID_ENV == 'development':
+    host = plaid.Environment.Development
+elif PLAID_ENV == 'production':
+    host = plaid.Environment.Production
+else:
+    raise ValueError("Invalid PLAID_ENV")
+
+configuration = plaid.Configuration(
+    host=host,
+    api_key={
+        'clientId': PLAID_CLIENT_ID,
+        'secret': PLAID_SECRET,
+    }
+)
+
+api_client = plaid.ApiClient(configuration)
+plaid_client = plaid_api.PlaidApi(api_client)
+
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 scheduler = APScheduler()
@@ -60,6 +93,14 @@ class Client(db.Model):
     billing_cycle = db.Column(db.String(50))
     client_status = db.Column(db.String(20), default='Active')
     notes = db.Column(db.Text)
+
+class PlaidItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    item_id = db.Column(db.String(100), nullable=False, unique=True)
+    access_token = db.Column(db.String(100), nullable=False)
+    last_synced = db.Column(db.DateTime, nullable=True)
+    client = db.relationship('Client', backref=db.backref('plaid_items', lazy=True))
 
 class Vendor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -325,26 +366,6 @@ def create_recurring_journal_entries():
             )
             db.session.add(new_entry)
         db.session.commit()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -948,8 +969,8 @@ def dashboard():
 
             actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
                 .filter(JournalEntry.category == budget.category) \
-                .filter(JournalEntry.date >= period_start) \
-                .filter(JournalEntry.date <= period_end) \
+                .filter(JournalEntry.date >= b.start_date) \
+                .filter(JournalEntry.date <= end) \
                 .scalar() or 0
 
             history.append({
@@ -1680,7 +1701,6 @@ def import_csv():
     return redirect(url_for('journal'))
 
 
-
 def get_account_choices(client_id):
     def _get_accounts_recursive(parent_id, level):
         accounts = Account.query.filter_by(client_id=client_id, parent_id=parent_id).order_by(Account.name).all()
@@ -1959,7 +1979,7 @@ def budget():
         )
         db.session.add(new_budget)
         db.session.commit()
-        flash(f'Budget created successfully.', 'success')
+        flash('Budget created successfully.', 'success')
         return redirect(url_for('budget'))
     else:
         budgets = Budget.query.filter_by(client_id=session['client_id']).all()
@@ -2672,3 +2692,93 @@ def transaction_analysis_page():
     accounts = get_account_choices(session['client_id'])
     vendors = Vendor.query.filter_by(client_id=session['client_id']).order_by(Vendor.name).all()
     return render_template('transaction_analysis.html', accounts=accounts, vendors=vendors)
+
+@app.route('/plaid')
+def plaid():
+    plaid_items = PlaidItem.query.filter_by(client_id=session['client_id']).all()
+    return render_template('plaid.html', plaid_items=plaid_items)
+
+@app.route('/api/create_link_token', methods=['POST'])
+def create_link_token():
+    try:
+        request = LinkTokenCreateRequest(
+            products=[Products('transactions')],
+            client_name="Logical Books",
+            country_codes=[CountryCode('US')],
+            language='en',
+            user=LinkTokenCreateRequestUser(
+                client_user_id=str(session['client_id'])
+            )
+        )
+        response = plaid_client.link_token_create(request)
+        return jsonify(response.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/exchange_public_token', methods=['POST'])
+def exchange_public_token():
+    public_token = request.json['public_token']
+    try:
+        exchange_request = ItemPublicTokenExchangeRequest(
+            public_token=public_token
+        )
+        exchange_response = plaid_client.item_public_token_exchange(exchange_request)
+        access_token = exchange_response['access_token']
+        item_id = exchange_response['item_id']
+        
+        # Check if item already exists
+        if PlaidItem.query.filter_by(item_id=item_id, client_id=session['client_id']).first():
+            return jsonify({'status': 'already_exists'})
+
+        new_item = PlaidItem(
+            client_id=session['client_id'],
+            item_id=item_id,
+            access_token=access_token
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/transactions/sync', methods=['POST'])
+def sync_transactions():
+    plaid_item_id = request.json['plaid_item_id']
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    added_count = 0
+    
+    try:
+        # Provide a cursor if it exists
+        cursor = item.last_synced.isoformat() if item.last_synced else None
+
+        request = TransactionsSyncRequest(
+            access_token=item.access_token,
+            cursor=cursor,
+        )
+        response = plaid_client.transactions_sync(request)
+        
+        added = response['added']
+        added_count = len(added)
+
+        for t in added:
+            new_transaction = Transaction(
+                date=t['date'],
+                description=t['name'],
+                amount=-t['amount'], # Plaid returns positive for debits, negative for credits
+                category=t['category'][0] if t['category'] else None,
+                client_id=session['client_id'],
+                is_approved=False,
+                source_account_id=None # We don't have a good way to map this yet
+            )
+            db.session.add(new_transaction)
+
+        item.last_synced = datetime.now()
+        db.session.commit()
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+    return jsonify({'status': 'success', 'added': added_count})
