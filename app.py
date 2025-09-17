@@ -2709,7 +2709,7 @@ def transaction_analysis_page():
 
 @app.route('/plaid')
 def plaid():
-    plaid_items = PlaidItem.query.filter_by(client_id=session['client_id']).all()
+    plaid_items = PlaidItem.query.options(db.joinedload(PlaidItem.plaid_accounts)).filter_by(client_id=session['client_id']).all()
     accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
     return render_template('plaid.html', plaid_items=plaid_items, accounts=accounts)
 
