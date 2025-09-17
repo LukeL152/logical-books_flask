@@ -12,36 +12,40 @@
     <thead>
         <tr>
             <th>Institution</th>
-            <th>Item ID</th>
+            <th>Account Name</th>
+            <th>Account Mask</th>
+            <th>Account Type</th>
             <th>Source Account</th>
-            <th>Last Synced</th>
             <th></th>
         </tr>
     </thead>
     <tbody>
         {% for item in plaid_items %}
-        <tr>
-            <td>{{ item.institution_name }}</td>
-            <td>{{ item.item_id }}</td>
-            <td>
-                <div class="select">
-                    <select class="account-select" data-item-id="{{ item.id }}">
-                        <option value="">Select an account</option>
-                        {% for account in accounts %}
-                        <option value="{{ account.id }}" {% if item.account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </td>
-            <td>{{ item.last_synced or 'Never' }}</td>
-            <td>
-                <button class="button is-info is-small sync-button" data-item-id="{{ item.id }}">Sync Transactions</button>
-                <button class="button is-success is-small save-account-button" data-item-id="{{ item.id }}">Save</button>
-            </td>
-        </tr>
+            {% for plaid_account in item.plaid_accounts %}
+            <tr>
+                <td>{{ item.institution_name }}</td>
+                <td>{{ plaid_account.name }}</td>
+                <td>{{ plaid_account.mask }}</td>
+                <td>{{ plaid_account.subtype }}</td>
+                <td>
+                    <div class="select">
+                        <select class="account-select" data-plaid-account-id="{{ plaid_account.id }}">
+                            <option value="">Select an account</option>
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}" {% if plaid_account.local_account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </td>
+                <td>
+                    <button class="button is-info is-small sync-button" data-plaid-account-id="{{ plaid_account.id }}">Sync Transactions</button>
+                    <button class="button is-success is-small save-account-button" data-plaid-account-id="{{ plaid_account.id }}">Save</button>
+                </td>
+            </tr>
+            {% endfor %}
         {% else %}
         <tr>
-            <td colspan="5">No bank accounts linked yet.</td>
+            <td colspan="6">No bank accounts linked yet.</td>
         </tr>
         {% endfor %}
     </tbody>
@@ -76,11 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const syncButtons = document.querySelectorAll('.sync-button');
     syncButtons.forEach(button => {
         button.addEventListener('click', async (event) => {
-            const plaidItemId = event.target.dataset.itemId;
+            const plaidAccountId = event.target.dataset.plaidAccountId;
             const response = await fetch('/api/transactions/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plaid_item_id: plaidItemId }),
+                body: JSON.stringify({ plaid_account_id: plaidAccountId }),
             });
             const result = await response.json();
             if (result.status === 'success') {
@@ -95,13 +99,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveAccountButtons = document.querySelectorAll('.save-account-button');
     saveAccountButtons.forEach(button => {
         button.addEventListener('click', async (event) => {
-            const plaidItemId = event.target.dataset.itemId;
-            const accountId = document.querySelector(`.account-select[data-item-id="${plaidItemId}"]`).value;
+            const plaidAccountId = event.target.dataset.plaidAccountId;
+            const accountId = document.querySelector(`.account-select[data-plaid-account-id="${plaidAccountId}"]`).value;
             const response = await fetch('/api/plaid/set_account', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    plaid_item_id: plaidItemId,
+                    plaid_account_id: plaidAccountId,
                     account_id: accountId
                 }),
             });

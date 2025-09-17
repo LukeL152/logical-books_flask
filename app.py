@@ -20,6 +20,7 @@ from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
+from plaid.model.accounts_get_request import AccountsGetRequest
 
 import os
 
@@ -94,6 +95,18 @@ class Client(db.Model):
     client_status = db.Column(db.String(20), default='Active')
     notes = db.Column(db.Text)
 
+class PlaidAccount(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    plaid_item_id = db.Column(db.Integer, db.ForeignKey('plaid_item.id'), nullable=False)
+    account_id = db.Column(db.String(100), nullable=False, unique=True)
+    name = db.Column(db.String(100), nullable=False)
+    mask = db.Column(db.String(10), nullable=False)
+    type = db.Column(db.String(50), nullable=False)
+    subtype = db.Column(db.String(50), nullable=False)
+    plaid_item = db.relationship('PlaidItem', backref=db.backref('plaid_accounts', lazy=True))
+    local_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
+    local_account = db.relationship('Account', backref=db.backref('plaid_accounts', lazy=True))
+
 class PlaidItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
@@ -102,8 +115,6 @@ class PlaidItem(db.Model):
     institution_name = db.Column(db.String(100), nullable=True)
     last_synced = db.Column(db.DateTime, nullable=True)
     client = db.relationship('Client', backref=db.backref('plaid_items', lazy=True))
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id', name='fk_plaid_item_account_id'), nullable=True)
-    account = db.relationship('Account', backref=db.backref('plaid_items', lazy=True))
 
 class Vendor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -2742,14 +2753,33 @@ def exchange_public_token():
         )
         db.session.add(new_item)
         db.session.commit()
+
+        # Fetch accounts for the item
+        accounts_request = AccountsGetRequest(access_token=access_token)
+        accounts_response = plaid_client.accounts_get(accounts_request)
+        accounts = accounts_response['accounts']
+
+        for account in accounts:
+            new_plaid_account = PlaidAccount(
+                plaid_item_id=new_item.id,
+                account_id=account['account_id'],
+                name=account['name'],
+                mask=account['mask'],
+                type=account['type'],
+                subtype=account['subtype']
+            )
+            db.session.add(new_plaid_account)
+
+        db.session.commit()
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'error': str(e)})
 
 @app.route('/api/transactions/sync', methods=['POST'])
 def sync_transactions():
-    plaid_item_id = request.json['plaid_item_id']
-    item = PlaidItem.query.get_or_404(plaid_item_id)
+    plaid_account_id = request.json['plaid_account_id']
+    plaid_account = PlaidAccount.query.get_or_404(plaid_account_id)
+    item = plaid_account.plaid_item
     if item.client_id != session['client_id']:
         return "Unauthorized", 403
 
@@ -2761,10 +2791,12 @@ def sync_transactions():
             sync_request = TransactionsSyncRequest(
                 access_token=item.access_token,
                 cursor=cursor,
+                account_ids=[plaid_account.account_id]
             )
         else:
             sync_request = TransactionsSyncRequest(
-                access_token=item.access_token
+                access_token=item.access_token,
+                account_ids=[plaid_account.account_id]
             )
 
         response = plaid_client.transactions_sync(sync_request)
@@ -2780,7 +2812,7 @@ def sync_transactions():
                 category=t['category'][0] if t['category'] else None,
                 client_id=session['client_id'],
                 is_approved=False,
-                source_account_id=item.account_id
+                source_account_id=plaid_account.local_account_id
             )
             db.session.add(new_transaction)
 
@@ -2794,12 +2826,12 @@ def sync_transactions():
 
 @app.route('/api/plaid/set_account', methods=['POST'])
 def set_plaid_account():
-    plaid_item_id = request.json['plaid_item_id']
+    plaid_account_id = request.json['plaid_account_id']
     account_id = request.json['account_id']
-    item = PlaidItem.query.get_or_404(plaid_item_id)
-    if item.client_id != session['client_id']:
+    plaid_account = PlaidAccount.query.get_or_404(plaid_account_id)
+    if plaid_account.plaid_item.client_id != session['client_id']:
         return "Unauthorized", 403
     
-    item.account_id = account_id
+    plaid_account.local_account_id = account_id
     db.session.commit()
     return jsonify({'status': 'success'})
