@@ -7,6 +7,7 @@ Create Date: 2025-09-17 10:39:44.123546
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 # revision identifiers, used by Alembic.
@@ -93,8 +94,19 @@ def upgrade():
                existing_type=sa.VARCHAR(length=10),
                type_=sa.Date(),
                existing_nullable=False)
-        batch_op.drop_constraint(batch_op.f('fk_transaction_vendor'), type_='foreignkey')
-        batch_op.drop_column('vendor_id')
+
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = [c['name'] for c in inspector.get_columns('transaction')]
+
+    if 'vendor_id' in columns:
+        with op.batch_alter_table('transaction', schema=None) as batch_op:
+            # Check if the foreign key exists before dropping
+            fks = inspector.get_foreign_keys('transaction')
+            fk_names = [fk['name'] for fk in fks]
+            if 'fk_transaction_vendor' in fk_names:
+                batch_op.drop_constraint('fk_transaction_vendor', type_='foreignkey')
+            batch_op.drop_column('vendor_id')
 
     # ### end Alembic commands ###
 
