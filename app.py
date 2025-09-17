@@ -2754,11 +2754,11 @@ def sync_transactions():
         # Provide a cursor if it exists
         cursor = item.last_synced.isoformat() if item.last_synced else None
 
-        request = TransactionsSyncRequest(
+        sync_request = TransactionsSyncRequest(
             access_token=item.access_token,
             cursor=cursor,
         )
-        response = plaid_client.transactions_sync(request)
+        response = plaid_client.transactions_sync(sync_request)
         
         added = response['added']
         added_count = len(added)
