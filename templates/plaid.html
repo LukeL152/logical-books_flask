@@ -54,15 +54,20 @@
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOMContentLoaded event fired.');
     const linkAccountButton = document.getElementById('link-account-button');
 
     linkAccountButton.addEventListener('click', async () => {
+        console.log('Link New Bank Account button clicked.');
         const response = await fetch('/api/create_link_token', { method: 'POST' });
+        console.log('Response from create_link_token:', response);
         const { link_token } = await response.json();
+        console.log('Link token received:', link_token);
 
         const handler = Plaid.create({
             token: link_token,
             onSuccess: async (public_token, metadata) => {
+                console.log('Plaid Link onSuccess callback fired.');
                 await fetch('/api/exchange_public_token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

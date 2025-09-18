@@ -35,6 +35,8 @@ class CustomJSONEncoder(JSONEncoder):
         return JSONEncoder.default(self, obj)
 
 app = Flask(__name__)
+import logging
+logging.basicConfig(level=logging.INFO)
 app.json_encoder = CustomJSONEncoder
 
 @app.template_filter('tojson')
@@ -2709,7 +2711,9 @@ def transaction_analysis_page():
 
 @app.route('/plaid')
 def plaid():
+    app.logger.info(f"Client ID: {session.get('client_id')}")
     plaid_items = PlaidItem.query.options(db.joinedload(PlaidItem.plaid_accounts)).filter_by(client_id=session['client_id']).all()
+    app.logger.info(f"Number of Plaid Items: {len(plaid_items)}")
     accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
     return render_template('plaid.html', plaid_items=plaid_items, accounts=accounts)
 
@@ -2734,17 +2738,21 @@ def create_link_token():
 def exchange_public_token():
     public_token = request.json['public_token']
     try:
-        exchange_request = ItemPublicTokenExchangeRequest(
-            public_token=public_token
-        )
+        # Perform Plaid API calls first to minimize db lock time
+        exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
         exchange_response = plaid_client.item_public_token_exchange(exchange_request)
         access_token = exchange_response['access_token']
         item_id = exchange_response['item_id']
-        
-        # Check if item already exists
+
+        # Check if item already exists before proceeding
         if PlaidItem.query.filter_by(item_id=item_id, client_id=session['client_id']).first():
             return jsonify({'status': 'already_exists'})
 
+        accounts_request = AccountsGetRequest(access_token=access_token)
+        accounts_response = plaid_client.accounts_get(accounts_request)
+        accounts = accounts_response['accounts']
+
+        # Now, perform database operations
         new_item = PlaidItem(
             client_id=session['client_id'],
             item_id=item_id,
@@ -2752,12 +2760,7 @@ def exchange_public_token():
             institution_name=request.json['institution_name']
         )
         db.session.add(new_item)
-        db.session.commit()
-
-        # Fetch accounts for the item
-        accounts_request = AccountsGetRequest(access_token=access_token)
-        accounts_response = plaid_client.accounts_get(accounts_request)
-        accounts = accounts_response['accounts']
+        db.session.flush()  # Flush to get the new_item.id for foreign key relationships
 
         for account in accounts:
             new_plaid_account = PlaidAccount(
@@ -2765,14 +2768,17 @@ def exchange_public_token():
                 account_id=account['account_id'],
                 name=account['name'],
                 mask=account['mask'],
-                type=account['type'],
-                subtype=account['subtype']
+                type=account['type'].value,
+                subtype=account['subtype'].value
             )
             db.session.add(new_plaid_account)
 
-        db.session.commit()
+        db.session.commit()  # Commit all changes at once
+        app.logger.info("PlaidItem and PlaidAccounts committed successfully.")
         return jsonify({'status': 'success'})
     except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error in exchange_public_token: {e}")
         return jsonify({'error': str(e)})
 
 @app.route('/api/transactions/sync', methods=['POST'])
