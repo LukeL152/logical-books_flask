@@ -18,7 +18,10 @@ from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.item_remove_request import ItemRemoveRequest
+from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.accounts_get_request import AccountsGetRequest
 
@@ -56,6 +59,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 PLAID_CLIENT_ID = os.environ.get('PLAID_CLIENT_ID')
 PLAID_SECRET = os.environ.get('PLAID_SECRET')
 PLAID_ENV = os.environ.get('PLAID_ENV', 'sandbox')
+PLAID_PRODUCTS = os.environ.get('PLAID_PRODUCTS', 'transactions').split(',')
+PLAID_COUNTRY_CODES = os.environ.get('PLAID_COUNTRY_CODES', 'US').split(',')
 
 if PLAID_ENV == 'sandbox':
     host = plaid.Environment.Sandbox
@@ -105,7 +110,7 @@ class PlaidAccount(db.Model):
     mask = db.Column(db.String(10), nullable=False)
     type = db.Column(db.String(50), nullable=False)
     subtype = db.Column(db.String(50), nullable=False)
-    plaid_item = db.relationship('PlaidItem', backref=db.backref('plaid_accounts', lazy=True))
+    plaid_item = db.relationship('PlaidItem', backref=db.backref('plaid_accounts', lazy=True, cascade="all, delete-orphan"))
     local_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     local_account = db.relationship('Account', backref=db.backref('plaid_accounts', lazy=True))
 
@@ -115,7 +120,9 @@ class PlaidItem(db.Model):
     item_id = db.Column(db.String(100), nullable=False, unique=True)
     access_token = db.Column(db.String(100), nullable=False)
     institution_name = db.Column(db.String(100), nullable=True)
+    institution_id = db.Column(db.String(100), nullable=True) # Making it nullable to avoid breaking existing data
     last_synced = db.Column(db.DateTime, nullable=True)
+    cursor = db.Column(db.String(256), nullable=True)
     client = db.relationship('Client', backref=db.backref('plaid_items', lazy=True))
 
 class Vendor(db.Model):
@@ -156,6 +163,8 @@ class Account(db.Model):
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
+    current_balance = db.Column(db.Float, nullable=True)
+    balance_last_updated = db.Column(db.DateTime, nullable=True)
 
 class JournalEntry(db.Model):
     __tablename__ = 'journal_entries'
@@ -326,6 +335,7 @@ class Transaction(db.Model):
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     source_account = db.relationship('Account', foreign_keys=[source_account_id])
+    plaid_transaction_id = db.Column(db.String(100), nullable=True, unique=True)
 
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -2721,9 +2731,9 @@ def plaid():
 def create_link_token():
     try:
         request = LinkTokenCreateRequest(
-            products=[Products('transactions')],
+            products=[Products(p) for p in PLAID_PRODUCTS],
             client_name="Logical Books",
-            country_codes=[CountryCode('US')],
+            country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
@@ -2732,51 +2742,111 @@ def create_link_token():
         response = plaid_client.link_token_create(request)
         return jsonify(response.to_dict())
     except Exception as e:
+        app.logger.error(f"Error creating link token: {e}")
+        return jsonify({'error': str(e)})
+
+@app.route('/api/create_link_token_for_update', methods=['POST'])
+def create_link_token_for_update():
+    plaid_item_id = request.json['plaid_item_id']
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        link_token_request = LinkTokenCreateRequest(
+            client_name="Logical Books",
+            country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
+            language='en',
+            user=LinkTokenCreateRequestUser(
+                client_user_id=str(session['client_id'])
+            ),
+            access_token=item.access_token,
+            update=LinkTokenCreateRequestUpdate(
+                account_selection_enabled=True
+            )
+        )
+        response = plaid_client.link_token_create(link_token_request)
+        return jsonify(response.to_dict())
+    except Exception as e:
         return jsonify({'error': str(e)})
 
 @app.route('/api/exchange_public_token', methods=['POST'])
 def exchange_public_token():
     public_token = request.json['public_token']
+    institution_id = request.json['institution_id']
+
     try:
-        # Perform Plaid API calls first to minimize db lock time
         exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
         exchange_response = plaid_client.item_public_token_exchange(exchange_request)
         access_token = exchange_response['access_token']
         item_id = exchange_response['item_id']
 
-        # Check if item already exists before proceeding
-        if PlaidItem.query.filter_by(item_id=item_id, client_id=session['client_id']).first():
-            return jsonify({'status': 'already_exists'})
-
         accounts_request = AccountsGetRequest(access_token=access_token)
         accounts_response = plaid_client.accounts_get(accounts_request)
         accounts = accounts_response['accounts']
 
-        # Now, perform database operations
-        new_item = PlaidItem(
-            client_id=session['client_id'],
-            item_id=item_id,
-            access_token=access_token,
-            institution_name=request.json['institution_name']
-        )
-        db.session.add(new_item)
-        db.session.flush()  # Flush to get the new_item.id for foreign key relationships
+        existing_item = PlaidItem.query.filter_by(institution_id=institution_id, client_id=session['client_id']).first()
 
-        for account in accounts:
-            new_plaid_account = PlaidAccount(
-                plaid_item_id=new_item.id,
-                account_id=account['account_id'],
-                name=account['name'],
-                mask=account['mask'],
-                type=account['type'].value,
-                subtype=account['subtype'].value
+        if existing_item:
+            # Update existing item
+            existing_item.access_token = access_token
+            existing_item.item_id = item_id # The item_id might change in an update
+
+            # Add new accounts
+            for account in accounts:
+                existing_plaid_account = PlaidAccount.query.filter_by(account_id=account['account_id']).first()
+                if not existing_plaid_account:
+                    new_plaid_account = PlaidAccount(
+                        plaid_item_id=existing_item.id,
+                        account_id=account['account_id'],
+                        name=account['name'],
+                        mask=account['mask'],
+                        type=account['type'].value,
+                        subtype=account['subtype'].value
+                    )
+                    db.session.add(new_plaid_account)
+            
+            db.session.commit()
+            update_balances(existing_item)
+            app.logger.info(f"Updated PlaidItem {existing_item.id} and added new accounts.")
+            return jsonify({'status': 'updated'})
+        else:
+            # Create new item
+            new_item = PlaidItem(
+                client_id=session['client_id'],
+                item_id=item_id,
+                access_token=access_token,
+                institution_name=request.json['institution_name'],
+                institution_id=institution_id
             )
-            db.session.add(new_plaid_account)
+            db.session.add(new_item)
+            db.session.flush()
 
-        db.session.commit()  # Commit all changes at once
-        app.logger.info("PlaidItem and PlaidAccounts committed successfully.")
-        return jsonify({'status': 'success'})
+            for account in accounts:
+                new_plaid_account = PlaidAccount(
+                    plaid_item_id=new_item.id,
+                    account_id=account['account_id'],
+                    name=account['name'],
+                    mask=account['mask'],
+                    type=account['type'].value,
+                    subtype=account['subtype'].value
+                )
+                db.session.add(new_plaid_account)
+
+            db.session.commit()
+            update_balances(new_item)
+            app.logger.info("PlaidItem and PlaidAccounts committed successfully.")
+            return jsonify({'status': 'success'})
+
     except Exception as e:
+        try:
+            error_body = json.loads(e.body)
+            if 'error_code' in error_body and error_body['error_code'] == 'NO_ACCOUNTS':
+                app.logger.info("No new accounts were added.")
+                return jsonify({'status': 'no_new_accounts'})
+        except:
+            pass # Not a Plaid error with a JSON body
+
         db.session.rollback()
         app.logger.error(f"Error in exchange_public_token: {e}")
         return jsonify({'error': str(e)})
@@ -2784,6 +2854,7 @@ def exchange_public_token():
 @app.route('/api/transactions/sync', methods=['POST'])
 def sync_transactions():
     plaid_account_id = request.json['plaid_account_id']
+    app.logger.info(f"Syncing transactions for plaid_account_id: {plaid_account_id}")
     plaid_account = PlaidAccount.query.get_or_404(plaid_account_id)
     item = plaid_account.plaid_item
     if item.client_id != session['client_id']:
@@ -2792,25 +2863,22 @@ def sync_transactions():
     added_count = 0
     
     try:
-        if item.last_synced:
-            cursor = item.last_synced.isoformat()
-            sync_request = TransactionsSyncRequest(
-                access_token=item.access_token,
-                cursor=cursor,
-                account_ids=[plaid_account.account_id]
-            )
-        else:
-            sync_request = TransactionsSyncRequest(
-                access_token=item.access_token,
-                account_ids=[plaid_account.account_id]
-            )
+        cursor = item.cursor
+        sync_request = TransactionsSyncRequest(
+            access_token=item.access_token,
+        )
+        if cursor:
+            sync_request.cursor = cursor
 
         response = plaid_client.transactions_sync(sync_request)
         
         added = response['added']
-        added_count = len(added)
 
-        for t in added:
+        # Filter transactions to only include those for the requested account
+        added_for_account = [t for t in added if t['account_id'] == plaid_account.account_id]
+        added_count = len(added_for_account)
+
+        for t in added_for_account:
             new_transaction = Transaction(
                 date=t['date'],
                 description=t['name'],
@@ -2822,10 +2890,20 @@ def sync_transactions():
             )
             db.session.add(new_transaction)
 
+        item.cursor = response['next_cursor']
         item.last_synced = datetime.now()
         db.session.commit()
 
     except Exception as e:
+        try:
+            error_body = json.loads(e.body)
+            if 'error_code' in error_body and error_body['error_code'] == 'NO_ACCOUNTS':
+                app.logger.info("No accounts found for this item during transaction sync.")
+                return jsonify({'status': 'no_accounts'})
+        except:
+            pass # Not a Plaid error with a JSON body
+
+        app.logger.error(f"Error syncing transactions: {e}")
         return jsonify({'error': str(e)})
 
     return jsonify({'status': 'success', 'added': added_count})
@@ -2841,3 +2919,117 @@ def set_plaid_account():
     plaid_account.local_account_id = account_id
     db.session.commit()
     return jsonify({'status': 'success'})
+
+def update_balances(plaid_item):
+    try:
+        accounts_request = AccountsGetRequest(access_token=plaid_item.access_token)
+        accounts_response = plaid_client.accounts_balance_get(accounts_request)
+        balances = accounts_response['accounts']
+
+        for balance_info in balances:
+            plaid_account = PlaidAccount.query.filter_by(account_id=balance_info['account_id']).first()
+            if plaid_account and plaid_account.local_account:
+                plaid_account.local_account.current_balance = balance_info['balances']['current']
+                plaid_account.local_account.balance_last_updated = datetime.utcnow()
+        
+        db.session.commit()
+        return True
+    except Exception as e:
+        app.logger.error(f"Error updating balances: {e}")
+        return False
+
+@app.route('/api/plaid/refresh_balances', methods=['POST'])
+def refresh_balances():
+    plaid_item_id = request.json['plaid_item_id']
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    if update_balances(item):
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'error': 'Failed to update balances'}), 500
+
+@app.route('/api/plaid/fetch_transactions', methods=['POST'])
+def fetch_transactions():
+    plaid_item_id = request.json['plaid_item_id']
+    start_date_str = request.json['start_date']
+    end_date_str = request.json['end_date']
+
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        request = TransactionsGetRequest(
+            access_token=item.access_token,
+            start_date=start_date,
+            end_date=end_date
+        )
+        response = plaid_client.transactions_get(request)
+        transactions = response['transactions']
+
+        plaid_accounts = PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()
+        account_id_map = {pa.account_id: pa.local_account_id for pa in plaid_accounts}
+
+        added_count = 0
+        for t in transactions:
+            # Check if transaction already exists
+            if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
+                source_account_id = account_id_map.get(t['account_id'])
+                if source_account_id:
+                    new_transaction = Transaction(
+                        plaid_transaction_id=t['transaction_id'],
+                        date=t['date'],
+                        description=t['name'],
+                        amount=-t['amount'],
+                        category=t['category'][0] if t['category'] else None,
+                        client_id=session['client_id'],
+                        is_approved=False,
+                        source_account_id=source_account_id
+                    )
+                    db.session.add(new_transaction)
+                    added_count += 1
+        
+        db.session.commit()
+        return jsonify({'status': 'success', 'added': added_count})
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/plaid/delete_item', methods=['POST'])
+def delete_plaid_item():
+    plaid_item_id = request.json['plaid_item_id']
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        # Remove the item from Plaid
+        remove_request = ItemRemoveRequest(access_token=item.access_token)
+        plaid_client.item_remove(remove_request)
+
+        # Remove the item from the database
+        db.session.delete(item)
+        db.session.commit()
+
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/plaid/delete_account', methods=['POST'])
+def delete_plaid_account():
+    plaid_account_id = request.json['plaid_account_id']
+    account = PlaidAccount.query.get_or_404(plaid_account_id)
+    if account.plaid_item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        db.session.delete(account)
+        db.session.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
