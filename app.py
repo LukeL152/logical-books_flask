@@ -1790,7 +1790,9 @@ def get_account_tree(accounts, start_date=None, end_date=None):
             'name': account.name,
             'balance': balance,
             'children': children_tree,
-            'last_reconciliation_date': last_reconciliation.statement_date if last_reconciliation else None
+            'last_reconciliation_date': last_reconciliation.statement_date if last_reconciliation else None,
+            'live_balance': account.current_balance,
+            'live_balance_updated_at': account.balance_last_updated
         })
     return account_tree
 
@@ -2938,8 +2940,8 @@ def set_plaid_account():
 
 def update_balances(plaid_item):
     try:
-        accounts_request = AccountsGetRequest(access_token=plaid_item.access_token)
-        accounts_response = plaid_client.accounts_balance_get(accounts_request)
+        balance_request = AccountsBalanceGetRequest(access_token=plaid_item.access_token)
+        accounts_response = plaid_client.accounts_balance_get(balance_request)
         balances = accounts_response['accounts']
 
         for balance_info in balances:

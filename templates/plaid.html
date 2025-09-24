@@ -13,16 +13,17 @@
         <tr>
             <th>Institution</th>
             <th>Account Name</th>
-            <th>Account Mask</th>
-            <th>Account Type</th>
-            <th>Source Account</th>
+            <th>Mask</th>
+            <th>Subtype</th>
+            <th>Balance</th>
+            <th>Linked Local Account</th>
             <th></th>
         </tr>
     </thead>
     <tbody>
         {% for item in plaid_items %}
             <tr>
-                <td colspan="6">
+                <td colspan="7">
                     <strong>{{ item.institution_name }}</strong>
                     <button class="button is-small is-link add-account-button" data-plaid-item-id="{{ item.id }}">Add Account</button>
                     <button class="button is-small is-info refresh-balances-button" data-plaid-item-id="{{ item.id }}">Refresh Balances</button>
@@ -50,6 +51,7 @@
                 <td></td>
                 <td>{{ plaid_account.name }}</td>
                 <td>{{ plaid_account.mask }}</td>
+                <td>{{ plaid_account.subtype }}</td>
                 <td>
                     {% if plaid_account.local_account and plaid_account.local_account.current_balance is not none %}
                         {{ plaid_account.local_account.current_balance | round(2) }} as of {{ plaid_account.local_account.balance_last_updated.strftime('%Y-%m-%d %H:%M') if plaid_account.local_account.balance_last_updated else 'N/A' }}
@@ -57,7 +59,6 @@
                         N/A
                     {% endif %}
                 </td>
-                <td>{{ plaid_account.subtype }}</td>
                 <td>
                     <div class="select">
                         <select class="account-select" data-plaid-account-id="{{ plaid_account.id }}">

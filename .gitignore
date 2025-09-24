@@ -6,6 +6,8 @@ __pycache__/
 
 # Virtual environment
 venv/
+.env
+plaid_*_response.txt
 
 # Database
 bookkeeping.db
