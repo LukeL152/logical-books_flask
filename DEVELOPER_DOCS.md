@@ -104,7 +104,34 @@ This process guarantees that all migrations are created sequentially, avoiding c
 *   **Running the Production Server:** The production server is managed by `systemd`. Do **NOT** run `run_prod.sh` (it has been removed). Instead, use `sudo systemctl start logical-books` (or `restart`, `stop`, `status`).
 *   **File Permissions:** If you encounter `read-only database` errors in production, ensure the `instance` directory (where `bookkeeping.db` resides) has write permissions for the user/group running the Gunicorn service (typically `www-data`). You might need to run: `sudo chown -R :www-data /var/www/logical-books/instance && sudo chmod -R g+w /var/www/logical-books/instance`
 
-## 3. Roadmap to a Production-Ready Bookkeeping Website
+## 3. Prioritized Development Roadmap
+
+This section outlines the most critical next steps to evolve Logical Books from a functional prototype into a feature-complete, secure, and user-friendly application. The roadmap is broken down into three main priority levels.
+
+### Priority 1: Core Security and Multi-User Foundation
+Before the app can be used in a real-world scenario, it needs a proper security and data foundation.
+
+*   **User Authentication:** Implement a real login system so that different users can securely access the application.
+*   **Data Segregation:** Ensure that one user's financial data is completely separate and invisible to other users.
+*   **Production Database:** Migrate from SQLite to a more powerful database like PostgreSQL to handle multiple users reliably.
+
+### Priority 2: Essential Bookkeeping Features
+These are core accounting features that are currently missing or incomplete.
+
+*   **Vendor Management:** Create a system to manage vendors and track bills (Accounts Payable).
+*   **Bank Reconciliation:** Enhance the reconciliation feature to allow importing bank statements (via Plaid or CSV) and matching them against existing transactions.
+*   **Improved Reporting:** Add date-range filtering and PDF/Excel export capabilities to all financial reports.
+
+### Priority 3: User Experience Polish
+These changes will make the app significantly more efficient and pleasant to use.
+
+*   **Interactive Tables:** Add search, sort, and pagination to all major data tables (transactions, accounts, etc.).
+*   **Searchable Dropdowns:** Make the Chart of Accounts dropdowns searchable, especially on forms for creating transactions and journal entries.
+
+---
+*The detailed breakdown of the roadmap follows below.*
+
+## 3.1. Detailed Roadmap to a Production-Ready Bookkeeping Website
 
 Transforming Logical Books into a robust, scalable, and secure production-grade application requires significant enhancements across several domains.
 
@@ -270,7 +297,34 @@ The basic Plaid integration is implemented. Users can link their bank accounts, 
 
 ### Next Steps
 
+*   **Implement Asynchronous Refresh:**
+    *   **Feature:** Implement a "Background Refresh" button that uses Plaid's `/transactions/refresh` product.
+    *   **Implementation:**
+        1.  The button would trigger a call to the `/transactions/refresh` API endpoint.
+        2.  A webhook endpoint would need to be created in the app to listen for the `TRANSACTIONS_REFRESH_COMPLETE` notification from Plaid.
+        3.  Upon receiving the webhook, the app would call `/transactions/sync` to fetch the new data and save it to the database.
+    *   **Benefit:** Improves UX by allowing the user to continue using the app without waiting for a long-running API call. Enables proactive, scheduled data fetching.
 *   **Automatic Syncing:** Implement a background scheduler (using APScheduler, which is already in the project) to automatically sync transactions periodically.
 *   **Webhook Integration:** Use Plaid webhooks to receive real-time notifications about new transactions, instead of relying on manual or scheduled polling.
 *   **Historical Imports:** Allow users to import transactions from a specified historical date range when they first link an account.
 *   **Error Handling:** Build more robust error handling for Plaid API calls and display user-friendly error messages.
+
+### Potential Future Plaid Product Integrations
+
+Here is a list of other Plaid products that could be integrated to enhance the application's functionality:
+
+*   **Auth:**
+    *   **What it is:** Retrieves the official account and routing numbers for checking and savings accounts.
+    *   **Why it's useful:** This is essential for enabling electronic payments. We could build features to pay vendors directly from the app or set up direct debit for receiving client payments via ACH.
+
+*   **Liabilities:**
+    *   **What it is:** Provides detailed data about a user's credit cards and loans (student loans, mortgages, etc.). This includes balances, interest rates, and payment due dates.
+    *   **Why it's useful:** This would automate a huge part of liability tracking. We could create a debt management dashboard, automatically record interest expenses, and provide reminders for upcoming loan payments.
+
+*   **Statements:**
+    *   **What it is:** Allows the app to download official bank statements in PDF format directly from the bank.
+    *   **Why it's useful:** This would be a massive improvement for the reconciliation process. Instead of having to manually download statements from their bank's website and upload them, users could pull them directly into the app for side-by-side comparison.
+
+*   **Identity:**
+    *   **What it is:** Verifies a user's identity using their bank account information and provides their name, address, phone number, and email on file with the bank.
+    *   **Why it's useful:** This is great for security and convenience. It can help with "Know Your Customer" (KYC) requirements and can be used to pre-fill a user's or a client's profile information with verified data.
