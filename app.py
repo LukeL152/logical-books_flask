@@ -1,3 +1,9 @@
+from dotenv import load_dotenv
+import os
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
+
 from flask import Flask, render_template, request, redirect, url_for, session, flash, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -22,12 +28,16 @@ from plaid.model.link_token_create_request_update import LinkTokenCreateRequestU
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.item_remove_request import ItemRemoveRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
+from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.accounts_get_request import AccountsGetRequest
+from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 
 import os
 
 from markupsafe import Markup
+import click
+from flask.cli import with_appcontext
 
 class CustomJSONEncoder(JSONEncoder):
     def default(self, obj):
@@ -392,8 +402,6 @@ def create_recurring_journal_entries():
             )
             db.session.add(new_entry)
         db.session.commit()
-
-
 
 
 
@@ -1348,7 +1356,7 @@ def journal():
         if filters['end_date']:
             query = query.filter(JournalEntry.date <= filters['end_date'])
         if filters['description']:
-            query = query.filter(JournalEntry.description.ilike(f"%{filters['description']}"))
+            query = query.filter(JournalEntry.description.ilike(f"%{filters['description']}%"))
         if filters['account_id']:
             query = query.filter(db.or_(JournalEntry.debit_account_id == filters['account_id'], JournalEntry.credit_account_id == filters['account_id']))
         if filters['categories']:
@@ -1996,8 +2004,7 @@ def budget():
             flash(f'A budget for this category and period already exists.', 'danger')
             return redirect(url_for('budget'))
 
-        new_budget = Budget(
-            category=category,
+        new_budget = Budget(category=category,
             amount=amount,
             period=period,
             start_date=start_date,
@@ -2783,7 +2790,8 @@ def exchange_public_token():
 
         accounts_request = AccountsGetRequest(access_token=access_token)
         accounts_response = plaid_client.accounts_get(accounts_request)
-        accounts = accounts_response['accounts']
+        plaid_accounts_from_api = accounts_response['accounts']
+        valid_plaid_account_ids = {acc['account_id'] for acc in plaid_accounts_from_api}
 
         existing_item = PlaidItem.query.filter_by(institution_id=institution_id, client_id=session['client_id']).first()
 
@@ -2792,23 +2800,31 @@ def exchange_public_token():
             existing_item.access_token = access_token
             existing_item.item_id = item_id # The item_id might change in an update
 
+            # Sync DB with Plaid's account list
+            local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=existing_item.id).all()
+            local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
+
             # Add new accounts
-            for account in accounts:
-                existing_plaid_account = PlaidAccount.query.filter_by(account_id=account['account_id']).first()
-                if not existing_plaid_account:
+            for acc_from_api in plaid_accounts_from_api:
+                if acc_from_api['account_id'] not in local_plaid_account_ids:
                     new_plaid_account = PlaidAccount(
                         plaid_item_id=existing_item.id,
-                        account_id=account['account_id'],
-                        name=account['name'],
-                        mask=account['mask'],
-                        type=account['type'].value,
-                        subtype=account['subtype'].value
+                        account_id=acc_from_api['account_id'],
+                        name=acc_from_api['name'],
+                        mask=acc_from_api['mask'],
+                        type=acc_from_api['type'].value,
+                        subtype=acc_from_api['subtype'].value
                     )
                     db.session.add(new_plaid_account)
+
+            # Delete old accounts that were deselected
+            for local_acc in local_plaid_accounts:
+                if local_acc.account_id not in valid_plaid_account_ids:
+                    db.session.delete(local_acc)
             
             db.session.commit()
             update_balances(existing_item)
-            app.logger.info(f"Updated PlaidItem {existing_item.id} and added new accounts.")
+            app.logger.info(f"Updated PlaidItem {existing_item.id} and synced accounts.")
             return jsonify({'status': 'updated'})
         else:
             # Create new item
@@ -2822,7 +2838,7 @@ def exchange_public_token():
             db.session.add(new_item)
             db.session.flush()
 
-            for account in accounts:
+            for account in plaid_accounts_from_api:
                 new_plaid_account = PlaidAccount(
                     plaid_item_id=new_item.id,
                     account_id=account['account_id'],
@@ -2950,49 +2966,113 @@ def refresh_balances():
     else:
         return jsonify({'error': 'Failed to update balances'}), 500
 
+@app.route('/api/plaid/sync_accounts', methods=['POST'])
+def sync_plaid_accounts():
+    plaid_item_id = request.json['plaid_item_id']
+    item = PlaidItem.query.get_or_404(plaid_item_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        # Sync accounts
+        accounts_request = AccountsGetRequest(access_token=item.access_token)
+        accounts_response = plaid_client.accounts_get(accounts_request)
+        plaid_accounts_from_api = accounts_response['accounts']
+        valid_plaid_account_ids = {acc['account_id'] for acc in plaid_accounts_from_api}
+
+        # Sync DB with Plaid's account list
+        local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=item.id).all()
+        local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
+
+        added_count = 0
+        # Add new accounts
+        for acc_from_api in plaid_accounts_from_api:
+            if acc_from_api['account_id'] not in local_plaid_account_ids:
+                new_plaid_account = PlaidAccount(
+                    plaid_item_id=item.id,
+                    account_id=acc_from_api['account_id'],
+                    name=acc_from_api['name'],
+                    mask=acc_from_api['mask'],
+                    type=acc_from_api['type'].value,
+                    subtype=acc_from_api['subtype'].value
+                )
+                db.session.add(new_plaid_account)
+                added_count += 1
+
+        deleted_count = 0
+        # Delete old accounts
+        for local_acc in local_plaid_accounts:
+            if local_acc.account_id not in valid_plaid_account_ids:
+                db.session.delete(local_acc)
+                deleted_count += 1
+        
+        db.session.commit()
+
+        return jsonify({'status': 'success', 'added': added_count, 'deleted': deleted_count})
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/api/plaid/fetch_transactions', methods=['POST'])
 def fetch_transactions():
-    plaid_item_id = request.json['plaid_item_id']
+    plaid_item_id = request.json.get('plaid_item_id')
+    plaid_account_id = request.json.get('plaid_account_id')
     start_date_str = request.json['start_date']
     end_date_str = request.json['end_date']
 
     start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
-    item = PlaidItem.query.get_or_404(plaid_item_id)
+    item = None
+    target_account_ids = None
+
+    if plaid_item_id:
+        item = PlaidItem.query.get_or_404(plaid_item_id)
+        plaid_accounts = PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()
+        target_account_ids = [pa.account_id.strip() for pa in plaid_accounts]
+    elif plaid_account_id:
+        plaid_account = PlaidAccount.query.get_or_404(plaid_account_id)
+        item = plaid_account.plaid_item
+        target_account_ids = [plaid_account.account_id.strip()]
+    else:
+        return jsonify({'error': 'Either plaid_item_id or plaid_account_id must be provided'}), 400
+
     if item.client_id != session['client_id']:
         return "Unauthorized", 403
 
     try:
-        request = TransactionsGetRequest(
+        transactions_get_request = TransactionsGetRequest(
             access_token=item.access_token,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
         )
-        response = plaid_client.transactions_get(request)
-        transactions = response['transactions']
+        response = plaid_client.transactions_get(transactions_get_request)
+        all_transactions = response['transactions']
+        
+        transactions = []
+        if target_account_ids is not None:
+            transactions = [t for t in all_transactions if t['account_id'].strip() in target_account_ids]
+        else:
+            transactions = all_transactions
 
-        plaid_accounts = PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()
-        account_id_map = {pa.account_id: pa.local_account_id for pa in plaid_accounts}
+        account_id_map = {pa.account_id: pa.local_account_id for pa in PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()}
 
         added_count = 0
         for t in transactions:
-            # Check if transaction already exists
             if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
                 source_account_id = account_id_map.get(t['account_id'])
-                if source_account_id:
-                    new_transaction = Transaction(
-                        plaid_transaction_id=t['transaction_id'],
-                        date=t['date'],
-                        description=t['name'],
-                        amount=-t['amount'],
-                        category=t['category'][0] if t['category'] else None,
-                        client_id=session['client_id'],
-                        is_approved=False,
-                        source_account_id=source_account_id
-                    )
-                    db.session.add(new_transaction)
-                    added_count += 1
+                new_transaction = Transaction(
+                    plaid_transaction_id=t['transaction_id'],
+                    date=t['date'],
+                    description=t['name'],
+                    amount=-t['amount'],
+                    category=t['category'][0] if t['category'] else None,
+                    client_id=session['client_id'],
+                    is_approved=False,
+                    source_account_id=source_account_id
+                )
+                db.session.add(new_transaction)
+                added_count += 1
         
         db.session.commit()
         return jsonify({'status': 'success', 'added': added_count})
@@ -3033,3 +3113,76 @@ def delete_plaid_account():
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'error': str(e)})
+
+def json_serial_for_cli(obj):
+    """JSON serializer for objects not serializable by default json code"""
+    from datetime import date, datetime
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError ("Type %s not serializable" % type(obj))
+
+@click.group()
+def inspect_plaid():
+    """Commands to inspect Plaid API responses."""
+    pass
+
+@inspect_plaid.command()
+@click.argument('item_id', type=int)
+@with_appcontext
+def accounts(item_id):
+    """Fetches and saves the /accounts/get response for a given PlaidItem ID."""
+    item = PlaidItem.query.get_or_404(item_id)
+    try:
+        accounts_request = AccountsGetRequest(access_token=item.access_token)
+        accounts_response = plaid_client.accounts_get(accounts_request)
+        
+        with open('plaid_accounts_response.txt', 'w') as f:
+            f.write(json.dumps(accounts_response.to_dict(), indent=4, default=json_serial_for_cli))
+            
+        print("Successfully saved /accounts/get response to plaid_accounts_response.txt")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+@inspect_plaid.command()
+@click.argument('item_id', type=int)
+@with_appcontext
+def balance(item_id):
+    """Fetches and saves the /accounts/balance/get response for a given PlaidItem ID."""
+    item = PlaidItem.query.get_or_404(item_id)
+    try:
+        balance_request = AccountsBalanceGetRequest(access_token=item.access_token)
+        balance_response = plaid_client.accounts_balance_get(balance_request)
+        
+        with open('plaid_balance_response.txt', 'w') as f:
+            f.write(json.dumps(balance_response.to_dict(), indent=4, default=json_serial_for_cli))
+            
+        print("Successfully saved /accounts/balance/get response to plaid_balance_response.txt")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+@inspect_plaid.command()
+@click.argument('item_id', type=int)
+@click.argument('start_date_str')
+@click.argument('end_date_str')
+@with_appcontext
+def transactions(item_id, start_date_str, end_date_str):
+    """Fetches and saves the /transactions/get response for a given PlaidItem ID."""
+    item = PlaidItem.query.get_or_404(item_id)
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    try:
+        transactions_get_request = TransactionsGetRequest(
+            access_token=item.access_token,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        response = plaid_client.transactions_get(transactions_get_request)
+        
+        with open('plaid_transactions_response.txt', 'w') as f:
+            f.write(json.dumps(response.to_dict(), indent=4, default=json_serial_for_cli))
+            
+        print("Successfully saved /transactions/get response to plaid_transactions_response.txt")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+app.cli.add_command(inspect_plaid)

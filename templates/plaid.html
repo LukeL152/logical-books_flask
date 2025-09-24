@@ -26,6 +26,7 @@
                     <strong>{{ item.institution_name }}</strong>
                     <button class="button is-small is-link add-account-button" data-plaid-item-id="{{ item.id }}">Add Account</button>
                     <button class="button is-small is-info refresh-balances-button" data-plaid-item-id="{{ item.id }}">Refresh Balances</button>
+                    <button class="button is-small is-warning sync-accounts-button" data-plaid-item-id="{{ item.id }}">Sync Accounts</button>
                     <button class="button is-small is-danger delete-item-button" data-plaid-item-id="{{ item.id }}">Delete Institution</button>
                     <div class="mt-4">
                         <form class="fetch-transactions-form" data-plaid-item-id="{{ item.id }}">
@@ -71,6 +72,21 @@
                     <button class="button is-info is-small sync-button" data-plaid-account-id="{{ plaid_account.id }}">Sync Transactions</button>
                     <button class="button is-success is-small save-account-button" data-plaid-account-id="{{ plaid_account.id }}">Save</button>
                     <button class="button is-danger is-small delete-account-button" data-plaid-account-id="{{ plaid_account.id }}">Delete Account</button>
+                    <div class="mt-4">
+                        <form class="fetch-transactions-form-account" data-plaid-account-id="{{ plaid_account.id }}">
+                            <div class="field is-grouped">
+                                <div class="control">
+                                    <input class="input" type="date" name="start_date" required>
+                                </div>
+                                <div class="control">
+                                    <input class="input" type="date" name="end_date" required>
+                                </div>
+                                <div class="control">
+                                    <button class="button is-info">Fetch by Date</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -264,14 +280,57 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    const syncAccountsButtons = document.querySelectorAll('.sync-accounts-button');
+    syncAccountsButtons.forEach(button => {
+        button.addEventListener('click', async (event) => {
+            const plaidItemId = event.target.dataset.plaidItemId;
+            const response = await fetch('/api/plaid/sync_accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plaid_item_id: plaidItemId }),
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                alert(`Successfully synced accounts. Added: ${result.added}, Deleted: ${result.deleted}.`);
+                location.reload();
+            } else {
+                alert(`Error syncing accounts: ${result.error}`);
+            }
+        });
+    });
+
     const fetchTransactionsForms = document.querySelectorAll('.fetch-transactions-form');
     fetchTransactionsForms.forEach(form => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const plaidItemId = event.target.dataset.plaidItemId;
+            const plaidItemId = form.dataset.plaidItemId;
             const formData = new FormData(event.target);
             const data = Object.fromEntries(formData.entries());
             data.plaid_item_id = plaidItemId;
+
+            const response = await fetch('/api/plaid/fetch_transactions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                alert(`Successfully fetched ${result.added} new transactions.`);
+                location.reload();
+            } else {
+                alert(`Error fetching transactions: ${result.error}`);
+            }
+        });
+    });
+
+    const fetchTransactionsFormsAccount = document.querySelectorAll('.fetch-transactions-form-account');
+    fetchTransactionsFormsAccount.forEach(form => {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const plaidAccountId = form.dataset.plaidAccountId;
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+            data.plaid_account_id = plaidAccountId;
 
             const response = await fetch('/api/plaid/fetch_transactions', {
                 method: 'POST',
