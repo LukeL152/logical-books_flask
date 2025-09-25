@@ -1,8 +1,8 @@
-"""Initial migration
+"""Initial migration from models
 
-Revision ID: 33fbad5fa9d9
+Revision ID: d01c10f230c1
 Revises: 
-Create Date: 2025-09-07 23:47:57.169642
+Create Date: 2025-09-24 20:28:22.539102
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '33fbad5fa9d9'
+revision = 'd01c10f230c1'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -48,6 +48,8 @@ def upgrade():
     sa.Column('category', sa.String(length=100), nullable=True),
     sa.Column('client_id', sa.Integer(), nullable=False),
     sa.Column('parent_id', sa.Integer(), nullable=True),
+    sa.Column('current_balance', sa.Float(), nullable=True),
+    sa.Column('balance_last_updated', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
     sa.ForeignKeyConstraint(['parent_id'], ['account.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -60,10 +62,20 @@ def upgrade():
     sa.ForeignKeyConstraint(['user_id'], ['client.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('budget',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('category', sa.String(length=100), nullable=False),
+    sa.Column('amount', sa.Float(), nullable=False),
+    sa.Column('period', sa.String(length=20), nullable=False),
+    sa.Column('start_date', sa.Date(), nullable=False),
+    sa.Column('client_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('financial_period',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('start_date', sa.String(length=10), nullable=False),
-    sa.Column('end_date', sa.String(length=10), nullable=False),
+    sa.Column('start_date', sa.Date(), nullable=False),
+    sa.Column('end_date', sa.Date(), nullable=False),
     sa.Column('is_closed', sa.Boolean(), nullable=False),
     sa.Column('client_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
@@ -73,13 +85,26 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('description', sa.String(length=200), nullable=True),
-    sa.Column('purchase_date', sa.String(length=10), nullable=False),
+    sa.Column('purchase_date', sa.Date(), nullable=False),
     sa.Column('cost', sa.Float(), nullable=False),
     sa.Column('useful_life', sa.Integer(), nullable=False),
     sa.Column('salvage_value', sa.Float(), nullable=False),
     sa.Column('client_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
     sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('plaid_item',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('client_id', sa.Integer(), nullable=False),
+    sa.Column('item_id', sa.String(length=100), nullable=False),
+    sa.Column('access_token', sa.String(length=100), nullable=False),
+    sa.Column('institution_name', sa.String(length=100), nullable=True),
+    sa.Column('institution_id', sa.String(length=100), nullable=True),
+    sa.Column('last_synced', sa.DateTime(), nullable=True),
+    sa.Column('cursor', sa.String(length=256), nullable=True),
+    sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('item_id')
     )
     op.create_table('product',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -114,17 +139,6 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('name')
     )
-    op.create_table('budget',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('account_id', sa.Integer(), nullable=False),
-    sa.Column('amount', sa.Float(), nullable=False),
-    sa.Column('period', sa.String(length=20), nullable=False),
-    sa.Column('start_date', sa.String(length=10), nullable=False),
-    sa.Column('client_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['account_id'], ['account.id'], ),
-    sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('category_rule',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=True),
@@ -142,7 +156,7 @@ def upgrade():
     )
     op.create_table('depreciation',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('date', sa.String(length=10), nullable=False),
+    sa.Column('date', sa.Date(), nullable=False),
     sa.Column('amount', sa.Float(), nullable=False),
     sa.Column('fixed_asset_id', sa.Integer(), nullable=False),
     sa.Column('client_id', sa.Integer(), nullable=False),
@@ -177,10 +191,24 @@ def upgrade():
     sa.ForeignKeyConstraint(['product_id'], ['product.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('plaid_account',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('plaid_item_id', sa.Integer(), nullable=False),
+    sa.Column('account_id', sa.String(length=100), nullable=False),
+    sa.Column('name', sa.String(length=100), nullable=False),
+    sa.Column('mask', sa.String(length=10), nullable=False),
+    sa.Column('type', sa.String(length=50), nullable=False),
+    sa.Column('subtype', sa.String(length=50), nullable=False),
+    sa.Column('local_account_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['local_account_id'], ['account.id'], ),
+    sa.ForeignKeyConstraint(['plaid_item_id'], ['plaid_item.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('account_id')
+    )
     op.create_table('reconciliation',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('account_id', sa.Integer(), nullable=False),
-    sa.Column('statement_date', sa.String(length=10), nullable=False),
+    sa.Column('statement_date', sa.Date(), nullable=False),
     sa.Column('statement_balance', sa.Float(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('client_id', sa.Integer(), nullable=False),
@@ -194,8 +222,8 @@ def upgrade():
     sa.Column('description', sa.String(length=200), nullable=True),
     sa.Column('amount', sa.Float(), nullable=False),
     sa.Column('frequency', sa.String(length=20), nullable=False),
-    sa.Column('start_date', sa.String(length=10), nullable=False),
-    sa.Column('end_date', sa.String(length=10), nullable=True),
+    sa.Column('start_date', sa.Date(), nullable=False),
+    sa.Column('end_date', sa.Date(), nullable=True),
     sa.Column('debit_account_id', sa.Integer(), nullable=False),
     sa.Column('credit_account_id', sa.Integer(), nullable=False),
     sa.Column('client_id', sa.Integer(), nullable=False),
@@ -206,7 +234,7 @@ def upgrade():
     )
     op.create_table('sale',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('date', sa.String(length=10), nullable=False),
+    sa.Column('date', sa.Date(), nullable=False),
     sa.Column('quantity', sa.Integer(), nullable=False),
     sa.Column('price', sa.Float(), nullable=False),
     sa.Column('product_id', sa.Integer(), nullable=False),
@@ -217,7 +245,7 @@ def upgrade():
     )
     op.create_table('transaction',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('date', sa.String(length=10), nullable=False),
+    sa.Column('date', sa.Date(), nullable=False),
     sa.Column('description', sa.String(length=200), nullable=True),
     sa.Column('amount', sa.Float(), nullable=False),
     sa.Column('category', sa.String(length=100), nullable=True),
@@ -227,13 +255,13 @@ def upgrade():
     sa.Column('credit_account_id', sa.Integer(), nullable=True),
     sa.Column('rule_modified', sa.Boolean(), nullable=False),
     sa.Column('source_account_id', sa.Integer(), nullable=True),
-    sa.Column('vendor_id', sa.Integer(), nullable=True),
+    sa.Column('plaid_transaction_id', sa.String(length=100), nullable=True),
     sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
     sa.ForeignKeyConstraint(['credit_account_id'], ['account.id'], ),
     sa.ForeignKeyConstraint(['debit_account_id'], ['account.id'], ),
     sa.ForeignKeyConstraint(['source_account_id'], ['account.id'], ),
-    sa.ForeignKeyConstraint(['vendor_id'], ['vendor.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('plaid_transaction_id')
     )
     op.create_table('transaction_rule',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -258,7 +286,7 @@ def upgrade():
     )
     op.create_table('journal_entries',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('date', sa.String(length=10), nullable=False),
+    sa.Column('date', sa.Date(), nullable=False),
     sa.Column('description', sa.String(length=200), nullable=True),
     sa.Column('debit_account_id', sa.Integer(), nullable=False),
     sa.Column('credit_account_id', sa.Integer(), nullable=False),
@@ -269,7 +297,7 @@ def upgrade():
     sa.Column('locked', sa.Boolean(), nullable=False),
     sa.Column('is_accrual', sa.Boolean(), nullable=True),
     sa.Column('is_reversing', sa.Boolean(), nullable=False),
-    sa.Column('reversal_date', sa.String(length=10), nullable=True),
+    sa.Column('reversal_date', sa.Date(), nullable=True),
     sa.Column('status', sa.String(length=20), nullable=False),
     sa.Column('transaction_type', sa.String(length=20), nullable=True),
     sa.Column('transaction_id', sa.Integer(), nullable=True),
@@ -302,16 +330,18 @@ def downgrade():
     op.drop_table('sale')
     op.drop_table('recurring_transaction')
     op.drop_table('reconciliation')
+    op.drop_table('plaid_account')
     op.drop_table('inventory')
     op.drop_table('import_template')
     op.drop_table('depreciation')
     op.drop_table('category_rule')
-    op.drop_table('budget')
     op.drop_table('vendor')
     op.drop_table('user')
     op.drop_table('product')
+    op.drop_table('plaid_item')
     op.drop_table('fixed_asset')
     op.drop_table('financial_period')
+    op.drop_table('budget')
     op.drop_table('audit_trail')
     op.drop_table('account')
     op.drop_table('role')

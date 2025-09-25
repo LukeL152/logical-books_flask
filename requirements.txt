@@ -24,3 +24,5 @@ Markdown==3.6
 flask_login==0.6.3
 plaid-python
 python-dotenv
+pandas
+openpyxl

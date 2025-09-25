@@ -1,31 +1,10 @@
 {% extends "base.html" %}
-{% from '_macros.html' import render_account_options, render_account_row %}
-
-{% macro render_accounts(accounts, level=0) %}
-    {% for account in accounts %}
-        {{ render_account_row(account, level) }}
-        {% if account.children.count() > 0 %}
-            {{ render_accounts(account.children, level + 1) }}
-        {% endif %}
-    {% endfor %}
-{% endmacro %}
+{% from '_macros.html' import render_account_options %}
 
 {% block content %}
 <h1 class="mb-4">Chart of Accounts</h1>
 
-<table class="table table-hover" id="accounts-table">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {{ render_accounts(accounts) }}
-    </tbody>
-</table>
+<div id="accounts-grid" class="ag-theme-quartz" style="height: 600px; width: 100%;"></div>
 
 <h2 class="mt-4">Add New Account</h2>
 <form method="POST" action="{{ url_for('add_account') }}" class="row g-3">
@@ -72,72 +51,35 @@
 
 {% block scripts %}
 <script>
-$(document).ready(function() {
-    var table = $('#accounts-table').DataTable({
-        "paging": false,
-        "info": false,
-        "ordering": false
-    });
+document.addEventListener('DOMContentLoaded', function() {
+    const gridData = {{ grid_data | tojson | safe }};
 
-    // When a search is performed...
-    table.on('search.dt', function() {
-        // First, hide all child rows to reset the state
-        $('tr.account-row').addClass('d-none');
-        // Show only top-level accounts
-        $('tr.account-row[data-parent-id="None"]').removeClass('d-none');
-        // Reset all icons to collapsed
-        $('.toggle-children').removeClass('bi-chevron-down').addClass('bi-chevron-right');
-
-        var searchTerm = table.search();
-        if (searchTerm) {
-            // For every row in the table (including those hidden by DataTables)
-            table.rows({ search: 'applied' }).nodes().each(function(rowNode) {
-                var row = $(rowNode);
-                // Make the matched row visible
-                row.removeClass('d-none');
-
-                // And make all its parents visible
-                let parentId = row.data('parent-id');
-                while (parentId && parentId !== 'None') {
-                    let parentRow = $('tr[data-id="' + parentId + '"]');
-                    parentRow.removeClass('d-none');
-                    parentRow.find('.toggle-children').removeClass('bi-chevron-right').addClass('bi-chevron-down');
-                    parentId = parentRow.data('parent-id');
+    const gridOptions = {
+        columnDefs: [
+            { field: 'name', headerName: 'Account Name', flex: 2 },
+            { field: 'type', flex: 1 },
+            { field: 'category', flex: 1 },
+            {
+                headerName: 'Actions',
+                flex: 1,
+                cellRenderer: params => {
+                    const editUrl = `{{ url_for('edit_account', account_id=0) }}`.slice(0, -1) + params.data.id;
+                    const deleteUrl = `{{ url_for('delete_account', account_id=0) }}`.slice(0, -1) + params.data.id;
+                    return `
+                        <a href="${editUrl}" class="btn btn-sm btn-primary">Edit</a>
+                        <a href="${deleteUrl}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
+                    `;
                 }
-            });
-        }
-    });
-
-    // Handle the manual expanding and collapsing
-    $('#accounts-table tbody').on('click', '.toggle-children', function () {
-        const icon = $(this);
-        const tr = icon.closest('tr');
-        const accountId = tr.data('id');
-        const children = $('tr.child-row-' + accountId);
-
-        icon.toggleClass('bi-chevron-right bi-chevron-down');
-
-        if (icon.hasClass('bi-chevron-down')) {
-            children.removeClass('d-none');
-        } else {
-            // Hide all descendants
-            function hideDescendants(parentId) {
-                const directChildren = $('tr.child-row-' + parentId);
-                directChildren.each(function() {
-                    const child = $(this);
-                    const childId = child.data('id');
-                    child.addClass('d-none');
-                    const childIcon = child.find('.toggle-children');
-                    if (childIcon.hasClass('bi-chevron-down')) {
-                        childIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
-                    }
-                    hideDescendants(childId);
-                });
             }
-            hideDescendants(accountId);
-        }
-    });
+        ],
+        rowData: gridData,
+    };
+
+    const gridDiv = document.querySelector('#accounts-grid');
+    agGrid.createGrid(gridDiv, gridOptions);
+
+    // Initialize select2 for the form
+    $('#parent_id').select2();
 });
 </script>
 {% endblock %}
-

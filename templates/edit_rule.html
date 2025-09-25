@@ -78,3 +78,14 @@
         </div>
     </form>
 {% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#debit_account_id').select2();
+    $('#credit_account_id').select2();
+    $('#include_accounts').select2();
+    $('#exclude_accounts').select2();
+});
+</script>
+{% endblock %}

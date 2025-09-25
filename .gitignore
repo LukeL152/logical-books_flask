@@ -26,3 +26,6 @@ GEMINI.md
 .env
 
 gha-creds-*.json
+
+# Miscellaneous Files
+misc/

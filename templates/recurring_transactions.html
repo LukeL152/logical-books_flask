@@ -48,3 +48,12 @@
     </tbody>
 </table>
 {% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('select[name="debit_account_id"]').select2();
+    $('select[name="credit_account_id"]').select2();
+});
+</script>
+{% endblock %}
