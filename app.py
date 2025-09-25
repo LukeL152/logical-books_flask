@@ -1261,18 +1261,30 @@ def full_pie_chart_income():
 @app.route('/accounts')
 def accounts():
     account_choices = get_account_choices(session['client_id'])
-    all_accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    grid_data = [{
-        'id': acc.id,
-        'name': acc.name,
-        'type': acc.type,
-        'category': acc.category,
-        'parent_id': acc.parent_id
-    } for acc in all_accounts]
+    
+    # Use a recursive function to build the list in order
+    def get_accounts_recursive(parent_id, level):
+        accounts = Account.query.filter_by(client_id=session['client_id'], parent_id=parent_id).order_by(Account.name).all()
+        acc_list = []
+        for account in accounts:
+            is_parent = account.children.first() is not None
+            acc_list.append({
+                'id': account.id,
+                'name': account.name,
+                'type': account.type,
+                'category': account.category,
+                'parent_id': account.parent_id,
+                'level': level,
+                'is_parent': is_parent
+            })
+            acc_list.extend(get_accounts_recursive(account.id, level + 1))
+        return acc_list
+
+    accounts_data = get_accounts_recursive(None, 0)
 
     return render_template('accounts.html', 
                            account_choices=account_choices, 
-                           grid_data=grid_data)
+                           accounts_data=accounts_data)
 
 @app.route('/add_account', methods=['POST'])
 def add_account():

@@ -4,7 +4,38 @@
 {% block content %}
 <h1 class="mb-4">Chart of Accounts</h1>
 
-<div id="accounts-grid" class="ag-theme-quartz" style="height: 600px; width: 100%;"></div>
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th style="width: 40%;">Account Name</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for account in accounts_data %}
+            <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id or '' }}" style="display: {{ '' if account.parent_id is none else 'none' }};">
+                <td>
+                    <span style="padding-left: {{ account.level * 25 }}px;">
+                        {% if account.is_parent %}
+                            <i class="bi bi-chevron-right expand-icon" style="cursor: pointer;"></i>
+                        {% else %}
+                            <i class="bi bi-dot" style="margin-left: 1.25rem;"></i>
+                        {% endif %}
+                        {{ account.name }}
+                    </span>
+                </td>
+                <td>{{ account.type }}</td>
+                <td>{{ account.category }}</td>
+                <td>
+                    <a href="{{ url_for('edit_account', account_id=account.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('delete_account', account_id=account.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
 
 <h2 class="mt-4">Add New Account</h2>
 <form method="POST" action="{{ url_for('add_account') }}" class="row g-3">
@@ -52,31 +83,40 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const gridData = {{ grid_data | tojson | safe }};
+    const table = document.querySelector('.table');
 
-    const gridOptions = {
-        columnDefs: [
-            { field: 'name', headerName: 'Account Name', flex: 2 },
-            { field: 'type', flex: 1 },
-            { field: 'category', flex: 1 },
-            {
-                headerName: 'Actions',
-                flex: 1,
-                cellRenderer: params => {
-                    const editUrl = `{{ url_for('edit_account', account_id=0) }}`.slice(0, -1) + params.data.id;
-                    const deleteUrl = `{{ url_for('delete_account', account_id=0) }}`.slice(0, -1) + params.data.id;
-                    return `
-                        <a href="${editUrl}" class="btn btn-sm btn-primary">Edit</a>
-                        <a href="${deleteUrl}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
-                    `;
-                }
+    table.addEventListener('click', function(e) {
+        if (e.target.classList.contains('expand-icon')) {
+            const row = e.target.closest('tr');
+            const accountId = row.dataset.id;
+            const isExpanded = e.target.classList.contains('bi-chevron-down');
+
+            e.target.classList.toggle('bi-chevron-down', !isExpanded);
+            e.target.classList.toggle('bi-chevron-right', isExpanded);
+
+            const allRows = Array.from(table.querySelectorAll('tbody tr'));
+            
+            function toggleChildren(parentId, show) {
+                const children = allRows.filter(r => r.dataset.parentId === parentId);
+                children.forEach(child => {
+                    child.style.display = show ? '' : 'none';
+                    if (!show) {
+                        // when hiding, also hide grandchildren
+                        const childId = child.dataset.id;
+                        toggleChildren(childId, false);
+                        // and reset their icon
+                        const childIcon = child.querySelector('.expand-icon');
+                        if (childIcon) {
+                            childIcon.classList.remove('bi-chevron-down');
+                            childIcon.classList.add('bi-chevron-right');
+                        }
+                    }
+                });
             }
-        ],
-        rowData: gridData,
-    };
 
-    const gridDiv = document.querySelector('#accounts-grid');
-    agGrid.createGrid(gridDiv, gridOptions);
+            toggleChildren(accountId, !isExpanded);
+        }
+    });
 
     // Initialize select2 for the form
     $('#parent_id').select2();
