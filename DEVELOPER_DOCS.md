@@ -328,3 +328,10 @@ Here is a list of other Plaid products that could be integrated to enhance the a
 *   **Identity:**
     *   **What it is:** Verifies a user's identity using their bank account information and provides their name, address, phone number, and email on file with the bank.
     *   **Why it's useful:** This is great for security and convenience. It can help with "Know Your Customer" (KYC) requirements and can be used to pre-fill a user's or a client's profile information with verified data.
+
+### SMS and Manual Link Delivery
+
+*   **Manual Link Generation:** The application now supports generating a Plaid Hosted Link URL manually. This allows the accountant to copy the link and send it to their client through any communication channel. This is a good workaround if automated SMS delivery is not enabled.
+*   **Future SMS Integration (Plaid/Twilio):** For future development, consider implementing automated SMS delivery of the Plaid link. This can be achieved in two ways:
+    1.  **Plaid Link Delivery:** Request access from Plaid to enable their "Link Delivery" feature, which can send the link via SMS directly. This would require the user's Plaid account to be enabled for this feature.
+    2.  **Twilio Integration:** Integrate the Twilio API to send the SMS. This would involve adding the Twilio Python library, obtaining API credentials, and creating a function to send the message. This approach provides more control over the messaging but requires managing a separate Twilio account.

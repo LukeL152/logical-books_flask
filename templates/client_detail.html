@@ -39,5 +39,50 @@
             <p>{{ client.notes | nl2br }}</p>
         </div>
     </div>
+
+    <div class="card mt-4">
+        <div class="card-header">
+            <h3>Plaid Integration</h3>
+        </div>
+        <div class="card-body">
+        </div>
 </div>
+
+-->
+
+<script>
+// document.getElementById('send-plaid-link-form').addEventListener('submit', async function(event) {
+//     event.preventDefault();
+//     const phoneNumber = document.getElementById('phone-number').value;
+//     const clientId = {{ client.id }};
+//     const statusDiv = document.getElementById('plaid-link-status');
+// 
+//     statusDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>';
+// 
+//     try {
+//         const response = await fetch('/api/create_link_token_sms', {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json',
+//             },
+//             body: JSON.stringify({
+//                 client_id: clientId,
+//                 phone_number: phoneNumber,
+//             }),
+//         });
+// 
+//         if (response.ok) {
+//             const data = await response.json();
+//             statusDiv.innerHTML = '<div class="alert alert-success" role="alert">Successfully sent Plaid link to ' + phoneNumber + '.</div>';
+//         } else {
+//             const errorData = await response.json();
+//             statusDiv.innerHTML = '<div class="alert alert-danger" role="alert">Error sending Plaid link: ' + (errorData.display_message || errorData.error_message || 'Unknown error') + '</div>';
+//         }
+//     } catch (error) {
+//         statusDiv.innerHTML = '<div class="alert alert-danger" role="alert">An unexpected error occurred.</div>';
+//         console.error('Error:', error);
+//     }
+// });
+
+
 {% endblock %}

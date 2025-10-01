@@ -7,6 +7,27 @@
     <button id="link-account-button" class="button is-primary">Link New Bank Account</button>
 </div>
 
+<h2 class="subtitle">Generate Hosted Link</h2>
+<div class="mb-4">
+    <div class="field">
+        <button id="generate-hosted-link-button" class="button is-info" data-client-id="{{ client.id }}">Generate Hosted Link for {{ client.business_name }}</button>
+    </div>
+    <div class="field mt-2" id="hosted-link-display" style="display: none;">
+        <label class="label">Hosted Link URL:</label>
+        <div class="field has-addons">
+            <div class="control is-expanded">
+                <input class="input" type="text" id="generated-hosted-link-url" readonly>
+            </div>
+            <div class="control">
+                <button class="button" id="copy-hosted-link-button">Copy</button>
+            </div>
+        </div>
+        <p class="help">Copy this link and send it to your client.</p>
+    </div>
+</div>
+
+
+
 <h2 class="subtitle">Linked Accounts</h2>
 <table class="table is-fullwidth">
     <thead>
@@ -139,7 +160,40 @@ document.addEventListener('DOMContentLoaded', () => {
         handler.open();
     });
 
-    const addAccountButtons = document.querySelectorAll('.add-account-button');
+    const generateHostedLinkButton = document.getElementById('generate-hosted-link-button');
+    const hostedLinkDisplay = document.getElementById('hosted-link-display');
+    const generatedHostedLinkUrl = document.getElementById('generated-hosted-link-url');
+
+    generateHostedLinkButton.addEventListener('click', async () => {
+        const clientId = generateHostedLinkButton.dataset.clientId;
+        const button = generateHostedLinkButton;
+
+        button.classList.add('is-loading');
+        try {
+            const response = await fetch(`/api/generate_hosted_link/${clientId}`, { method: 'POST' });
+            const result = await response.json();
+
+            if (response.ok) {
+                generatedHostedLinkUrl.value = result.hosted_link_url;
+                hostedLinkDisplay.style.display = 'block';
+            } else {
+                alert(`Error generating Hosted Link: ${result.error_message || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error generating Hosted Link:', error);
+            alert('An unexpected error occurred while generating the Hosted Link.');
+        } finally {
+            button.classList.remove('is-loading');
+        }
+    });
+
+    const copyHostedLinkButton = document.getElementById('copy-hosted-link-button');
+    copyHostedLinkButton.addEventListener('click', () => {
+        const hostedLinkUrl = document.getElementById('generated-hosted-link-url');
+        hostedLinkUrl.select();
+        document.execCommand('copy');
+        alert('Link copied to clipboard!');
+    });
     addAccountButtons.forEach(button => {
         button.addEventListener('click', async (event) => {
             const plaidItemId = event.target.dataset.plaidItemId;

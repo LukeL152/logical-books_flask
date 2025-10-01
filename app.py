@@ -24,6 +24,7 @@ from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
+from plaid.model.link_token_get_request import LinkTokenGetRequest
 from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.item_remove_request import ItemRemoveRequest
@@ -92,6 +93,8 @@ configuration = plaid.Configuration(
 api_client = plaid.ApiClient(configuration)
 plaid_client = plaid_api.PlaidApi(api_client)
 
+
+
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 scheduler = APScheduler()
@@ -134,6 +137,13 @@ class PlaidItem(db.Model):
     last_synced = db.Column(db.DateTime, nullable=True)
     cursor = db.Column(db.String(256), nullable=True)
     client = db.relationship('Client', backref=db.backref('plaid_items', lazy=True))
+
+class PendingPlaidLink(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    link_token = db.Column(db.String(256), nullable=False, unique=True, index=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 
 class Vendor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -402,6 +412,17 @@ def create_recurring_journal_entries():
             )
             db.session.add(new_entry)
         db.session.commit()
+
+@scheduler.task('cron', id='cleanup_pending_plaid_links', day='*', hour=2) # Run daily at 2am
+def cleanup_pending_plaid_links():
+    with app.app_context():
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        expired_links = PendingPlaidLink.query.filter(PendingPlaidLink.created_at < seven_days_ago).all()
+        if expired_links:
+            for link in expired_links:
+                db.session.delete(link)
+            db.session.commit()
+            logging.info(f"Cleaned up {len(expired_links)} expired pending Plaid links.")
 
 
 
@@ -714,7 +735,7 @@ def normalize_date(date_str):
 
 @app.before_request
 def before_request():
-    if 'client_id' not in session and request.endpoint not in ['clients', 'add_client', 'select_client', 'edit_client', 'delete_client']:
+    if 'client_id' not in session and request.endpoint not in ['clients', 'add_client', 'select_client', 'edit_client', 'delete_client', 'plaid_webhook']:
         return redirect(url_for('clients'))
 
 @app.route('/clients')
@@ -2751,30 +2772,102 @@ def transaction_analysis_page():
     return render_template('transaction_analysis.html', accounts=accounts, vendors=vendors)
 
 @app.route('/plaid')
-def plaid():
-    app.logger.info(f"Client ID: {session.get('client_id')}")
-    plaid_items = PlaidItem.query.options(db.joinedload(PlaidItem.plaid_accounts)).filter_by(client_id=session['client_id']).all()
-    app.logger.info(f"Number of Plaid Items: {len(plaid_items)}")
-    accounts = Account.query.filter_by(client_id=session['client_id']).order_by(Account.name).all()
-    return render_template('plaid.html', plaid_items=plaid_items, accounts=accounts)
+def plaid_page():
+    if 'client_id' not in session:
+        return redirect(url_for('clients'))
+    
+    active_client_id = session['client_id']
+    client = Client.query.get(active_client_id)
+    plaid_items = PlaidItem.query.filter_by(client_id=active_client_id).all()
+    accounts = Account.query.filter_by(client_id=active_client_id).order_by(Account.name).all()
+    
+    return render_template('plaid.html', 
+                           plaid_items=plaid_items, 
+                           accounts=accounts, 
+                           client=client)
+
+@app.route('/plaid_link_completion')
+def plaid_link_completion():
+    flash('Bank account linked successfully!', 'success')
+    return redirect(url_for('plaid'))
 
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     try:
         request = LinkTokenCreateRequest(
-            products=[Products(p) for p in PLAID_PRODUCTS],
-            client_name="Logical Books",
-            country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
-            language='en',
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
-            )
+            ),
+            client_name="My App",
+            products=[Products(p) for p in PLAID_PRODUCTS],
+            country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
+            language='en',
+            is_mobile_app=True, # Enable Hosted Link for mobile
+            completion_redirect_uri=url_for('plaid_link_completion', _external=True) # Redirect after completion
         )
         response = plaid_client.link_token_create(request)
         return jsonify(response.to_dict())
-    except Exception as e:
-        app.logger.error(f"Error creating link token: {e}")
-        return jsonify({'error': str(e)})
+    except plaid.exceptions.ApiException as e:
+        return jsonify(json.loads(e.body)), 500
+
+@app.route('/api/generate_hosted_link/<int:client_id>', methods=['POST'])
+def generate_hosted_link(client_id):
+    # Ensure the current user has access to this client
+    if session.get('client_id') != client_id:
+        return "Unauthorized", 403
+
+    try:
+        request = LinkTokenCreateRequest(
+            user=LinkTokenCreateRequestUser(
+                client_user_id=str(client_id)
+            ),
+            client_name="My App",
+            products=[Products(p) for p in PLAID_PRODUCTS],
+            country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
+            language='en',
+            hosted_link={}
+        )
+        response = plaid_client.link_token_create(request)
+        
+        link_token = response['link_token']
+        new_pending_link = PendingPlaidLink(link_token=link_token, client_id=client_id)
+        db.session.add(new_pending_link)
+        db.session.commit()
+
+        hosted_link_url = response['hosted_link_url']
+        return jsonify({'hosted_link_url': hosted_link_url})
+    except plaid.exceptions.ApiException as e:
+        return jsonify(json.loads(e.body)), 500
+
+# @app.route('/api/create_link_token_sms', methods=['POST'])
+# def create_link_token_sms():
+#     client_id = request.json['client_id']
+#     phone_number = request.json['phone_number']
+# 
+#     client = Client.query.get_or_404(client_id)
+#     if not client:
+#         return jsonify({'error': 'Client not found'}), 404
+# 
+#     try:
+#         link_token_request = LinkTokenCreateRequest(
+#             user=LinkTokenCreateRequestUser(
+#                 client_user_id=str(client.id),
+#                 phone_number=phone_number
+#             ),
+#             client_name="My App",
+#             products=[Products(p) for p in PLAID_PRODUCTS],
+#             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
+#             language='en',
+#             hosted_link={
+#                 "delivery_method": "sms",
+#                 "completion_redirect_uri": url_for('plaid_link_completion', _external=True),
+#                 "is_mobile_app": False
+#             }
+#         )
+#         response = plaid_client.link_token_create(link_token_request)
+#         return jsonify(response.to_dict())
+#     except plaid.exceptions.ApiException as e:
+#         return jsonify(json.loads(e.body)), 500
 
 @app.route('/api/create_link_token_for_update', methods=['POST'])
 def create_link_token_for_update():
@@ -2801,95 +2894,104 @@ def create_link_token_for_update():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app.route('/api/exchange_public_token', methods=['POST'])
-def exchange_public_token():
-    public_token = request.json['public_token']
-    institution_id = request.json['institution_id']
-
+def _exchange_public_token(public_token, institution_name, institution_id, client_id):
     try:
         exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
         exchange_response = plaid_client.item_public_token_exchange(exchange_request)
         access_token = exchange_response['access_token']
         item_id = exchange_response['item_id']
 
-        accounts_request = AccountsGetRequest(access_token=access_token)
-        accounts_response = plaid_client.accounts_get(accounts_request)
-        plaid_accounts_from_api = accounts_response['accounts']
-        valid_plaid_account_ids = {acc['account_id'] for acc in plaid_accounts_from_api}
-
-        existing_item = PlaidItem.query.filter_by(institution_id=institution_id, client_id=session['client_id']).first()
-
+        # Check if this item already exists for this client
+        existing_item = PlaidItem.query.filter_by(item_id=item_id, client_id=client_id).first()
         if existing_item:
-            # Update existing item
-            existing_item.access_token = access_token
-            existing_item.item_id = item_id # The item_id might change in an update
+            # This can happen in a webhook scenario if the user goes through the flow multiple times.
+            # It's safe to just ignore it.
+            logging.info(f'Item {item_id} already exists for client {client_id}. Ignoring.')
+            return None, None # Indicate that no new item was created
 
-            # Sync DB with Plaid's account list
-            local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=existing_item.id).all()
-            local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
+        new_item = PlaidItem(
+            client_id=client_id,
+            item_id=item_id,
+            access_token=access_token,
+            institution_name=institution_name,
+            institution_id=institution_id
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        
+        # Also sync accounts right away
+        sync_plaid_accounts(new_item.id)
 
-            # Add new accounts
-            for acc_from_api in plaid_accounts_from_api:
-                if acc_from_api['account_id'] not in local_plaid_account_ids:
-                    new_plaid_account = PlaidAccount(
-                        plaid_item_id=existing_item.id,
-                        account_id=acc_from_api['account_id'],
-                        name=acc_from_api['name'],
-                        mask=acc_from_api['mask'],
-                        type=acc_from_api['type'].value,
-                        subtype=acc_from_api['subtype'].value
-                    )
-                    db.session.add(new_plaid_account)
+        return new_item, None
+    except plaid.exceptions.ApiException as e:
+        logging.error(f"Plaid API exception during token exchange: {e}")
+        return None, json.loads(e.body)
 
-            # Delete old accounts that were deselected
-            for local_acc in local_plaid_accounts:
-                if local_acc.account_id not in valid_plaid_account_ids:
-                    db.session.delete(local_acc)
-            
-            db.session.commit()
-            update_balances(existing_item)
-            app.logger.info(f"Updated PlaidItem {existing_item.id} and synced accounts.")
-            return jsonify({'status': 'updated'})
+@app.route('/api/exchange_public_token', methods=['POST'])
+def exchange_public_token():
+    public_token = request.json['public_token']
+    institution_name = request.json['institution_name']
+    institution_id = request.json['institution_id']
+    
+    new_item, error = _exchange_public_token(public_token, institution_name, institution_id, session['client_id'])
+
+    if error:
+        if error.get('error_code') == 'ITEM_LOGIN_REQUIRED':
+            return jsonify({'error': 'Item login required. The user may need to re-authenticate.'}), 409
+        return jsonify(error), 500
+    
+    if not new_item:
+        # This means the item already existed
+        return jsonify({'error': f'This institution ({institution_name}) is already linked.'}), 409
+
+    return jsonify({'status': 'success'})
+
+@app.route('/api/plaid_webhook', methods=['POST'])
+def plaid_webhook():
+    data = request.get_json()
+    webhook_code = data.get('webhook_code')
+    link_token = data.get('link_token')
+
+    logging.info(f"Received Plaid webhook: {data.get('webhook_type')} - {webhook_code}")
+
+    if webhook_code == 'SESSION_FINISHED':
+        pending_link = PendingPlaidLink.query.filter_by(link_token=link_token).first()
+
+        if not pending_link:
+            logging.warning(f"Webhook for link_token '{link_token}' received, but no pending client found.")
+            return jsonify({'status': 'ignored', 'reason': 'client_not_found'})
+
+        client_id = pending_link.client_id
+
+        if data.get('status') == 'SUCCESS':
+            public_token = data.get('public_tokens')[0] # Assuming one for now
+            try:
+                # The institution details are in the webhook payload for SESSION_FINISHED
+                institution_id = data.get('metadata', {}).get('institution', {}).get('institution_id')
+                institution_name = data.get('metadata', {}).get('institution', {}).get('name')
+
+                if not institution_id or not institution_name:
+                    # Fallback to link_token_get if metadata is not as expected
+                    link_token_info_request = plaid_client.link_token_get(plaid.model.link_token_get_request.LinkTokenGetRequest(link_token=link_token))
+                    institution_id = link_token_info_request['institution']['institution_id']
+                    institution_name = link_token_info_request['institution']['name']
+
+                _exchange_public_token(public_token, institution_name, institution_id, client_id)
+                logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
+                db.session.delete(pending_link)
+                db.session.commit()
+                return jsonify({'status': 'success'})
+
+            except plaid.exceptions.ApiException as e:
+                logging.error(f"Error processing webhook: {e}")
+                return jsonify({'status': 'error', 'reason': 'plaid_api_error'}), 500
         else:
-            # Create new item
-            new_item = PlaidItem(
-                client_id=session['client_id'],
-                item_id=item_id,
-                access_token=access_token,
-                institution_name=request.json['institution_name'],
-                institution_id=institution_id
-            )
-            db.session.add(new_item)
-            db.session.flush()
-
-            for account in plaid_accounts_from_api:
-                new_plaid_account = PlaidAccount(
-                    plaid_item_id=new_item.id,
-                    account_id=account['account_id'],
-                    name=account['name'],
-                    mask=account['mask'],
-                    type=account['type'].value,
-                    subtype=account['subtype'].value
-                )
-                db.session.add(new_plaid_account)
-
+            logging.info(f"Webhook for link_token '{link_token}' was not successful (status: {data.get('status')}).")
+            db.session.delete(pending_link)
             db.session.commit()
-            update_balances(new_item)
-            app.logger.info("PlaidItem and PlaidAccounts committed successfully.")
-            return jsonify({'status': 'success'})
+            return jsonify({'status': 'ignored', 'reason': 'not_success'})
 
-    except Exception as e:
-        try:
-            error_body = json.loads(e.body)
-            if 'error_code' in error_body and error_body['error_code'] == 'NO_ACCOUNTS':
-                app.logger.info("No new accounts were added.")
-                return jsonify({'status': 'no_new_accounts'})
-        except:
-            pass # Not a Plaid error with a JSON body
-
-        db.session.rollback()
-        app.logger.error(f"Error in exchange_public_token: {e}")
-        return jsonify({'error': str(e)})
+    return jsonify({'status': 'received'})
 
 @app.route('/api/transactions/sync', methods=['POST'])
 def sync_transactions():
