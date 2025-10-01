@@ -2977,8 +2977,16 @@ def plaid_webhook():
                 link_get_request = plaid.model.link_token_get_request.LinkTokenGetRequest(link_token=link_token)
                 link_get_response = plaid_client.link_token_get(link_get_request)
 
-                institution_id = link_get_response.get('institution_id')
-                institution_name = link_get_response.get('institution_name')
+                institution_id = None
+                institution_name = None
+
+                if link_get_response and 'link_sessions' in link_get_response and link_get_response['link_sessions']:
+                    first_session = link_get_response['link_sessions'][0]
+                    if 'results' in first_session and 'item_add_results' in first_session['results'] and first_session['results']['item_add_results']:
+                        first_item_add_result = first_session['results']['item_add_results'][0]
+                        if 'institution' in first_item_add_result:
+                            institution_id = first_item_add_result['institution'].get('institution_id')
+                            institution_name = first_item_add_result['institution'].get('name')
 
                 if not institution_id or not institution_name:
                     logging.error(f"Could not find institution details in /link/token/get response for {link_token}")
