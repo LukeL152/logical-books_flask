@@ -2971,26 +2971,19 @@ def plaid_webhook():
 
         if data.get('status', '').upper() == 'SUCCESS':
             public_token = data.get('public_tokens')[0] # Assuming one for now
-            try:
-                # The institution details are in the webhook payload for SESSION_FINISHED
-                institution_id = data.get('metadata', {}).get('institution', {}).get('institution_id')
-                institution_name = data.get('metadata', {}).get('institution', {}).get('name')
+            metadata = data.get('metadata', {})
+            institution_id = metadata.get('institution_id')
+            institution_name = metadata.get('institution_name')
 
-                if not institution_id or not institution_name:
-                    # Fallback to link_token_get if metadata is not as expected
-                    link_token_info_request = plaid_client.link_token_get(plaid.model.link_token_get_request.LinkTokenGetRequest(link_token=link_token))
-                    institution_id = link_token_info_request['institution']['institution_id']
-                    institution_name = link_token_info_request['institution']['name']
+            if not institution_id or not institution_name:
+                logging.error(f"Could not find institution details in SESSION_FINISHED webhook for link_token {link_token}")
+                return jsonify({'status': 'error', 'reason': 'institution_details_missing'}), 500
 
-                _exchange_public_token(public_token, institution_name, institution_id, client_id)
-                logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
-                db.session.delete(pending_link)
-                db.session.commit()
-                return jsonify({'status': 'success'})
-
-            except plaid.exceptions.ApiException as e:
-                logging.error(f"Error processing webhook: {e}")
-                return jsonify({'status': 'error', 'reason': 'plaid_api_error'}), 500
+            _exchange_public_token(public_token, institution_name, institution_id, client_id)
+            logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
+            db.session.delete(pending_link)
+            db.session.commit()
+            return jsonify({'status': 'success'})
         else:
             logging.info(f"Webhook for link_token '{link_token}' was not successful (status: {data.get('status')}).")
             db.session.delete(pending_link)
