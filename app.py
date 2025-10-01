@@ -2969,7 +2969,7 @@ def plaid_webhook():
 
         client_id = pending_link.client_id
 
-        if data.get('status') == 'SUCCESS':
+        if data.get('status', '').upper() == 'SUCCESS':
             public_token = data.get('public_tokens')[0] # Assuming one for now
             try:
                 # The institution details are in the webhook payload for SESSION_FINISHED
