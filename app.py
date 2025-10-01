@@ -2971,19 +2971,28 @@ def plaid_webhook():
 
         if data.get('status', '').upper() == 'SUCCESS':
             public_token = data.get('public_tokens')[0] # Assuming one for now
-            metadata = data.get('metadata', {})
-            institution_id = metadata.get('institution_id')
-            institution_name = metadata.get('institution_name')
+            
+            try:
+                # For Hosted Link, we must call /link/token/get to fetch the institution details.
+                link_get_request = plaid.model.link_token_get_request.LinkTokenGetRequest(link_token=link_token)
+                link_get_response = plaid_client.link_token_get(link_get_request)
 
-            if not institution_id or not institution_name:
-                logging.error(f"Could not find institution details in SESSION_FINISHED webhook for link_token {link_token}")
-                return jsonify({'status': 'error', 'reason': 'institution_details_missing'}), 500
+                institution_id = link_get_response.get('institution_id')
+                institution_name = link_get_response.get('institution_name')
 
-            _exchange_public_token(public_token, institution_name, institution_id, client_id)
-            logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
-            db.session.delete(pending_link)
-            db.session.commit()
-            return jsonify({'status': 'success'})
+                if not institution_id or not institution_name:
+                    logging.error(f"Could not find institution details in /link/token/get response for {link_token}")
+                    return jsonify({'status': 'error', 'reason': 'institution_details_missing_from_api'}), 500
+
+                _exchange_public_token(public_token, institution_name, institution_id, client_id)
+                logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
+                db.session.delete(pending_link)
+                db.session.commit()
+                return jsonify({'status': 'success'})
+
+            except plaid.exceptions.ApiException as e:
+                logging.error(f"Plaid API error during /link/token/get: {e}")
+                return jsonify({'status': 'error', 'reason': 'plaid_api_error'}), 500
         else:
             logging.info(f"Webhook for link_token '{link_token}' was not successful (status: {data.get('status')}).")
             db.session.delete(pending_link)
