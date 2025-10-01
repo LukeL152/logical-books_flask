@@ -3108,52 +3108,16 @@ def refresh_balances():
     else:
         return jsonify({'error': 'Failed to update balances'}), 500
 
-@app.route('/api/plaid/sync_accounts', methods=['POST'])
-def sync_plaid_accounts():
-    plaid_item_id = request.json['plaid_item_id']
-    item = PlaidItem.query.get_or_404(plaid_item_id)
-    if item.client_id != session['client_id']:
-        return "Unauthorized", 403
-
-    try:
-        # Sync accounts
-        accounts_request = AccountsGetRequest(access_token=item.access_token)
-        accounts_response = plaid_client.accounts_get(accounts_request)
-        plaid_accounts_from_api = accounts_response['accounts']
-        valid_plaid_account_ids = {acc['account_id'] for acc in plaid_accounts_from_api}
-
-        # Sync DB with Plaid's account list
-        local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=item.id).all()
-        local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
-
-        added_count = 0
-        # Add new accounts
-        for acc_from_api in plaid_accounts_from_api:
-            if acc_from_api['account_id'] not in local_plaid_account_ids:
-                new_plaid_account = PlaidAccount(
-                    plaid_item_id=item.id,
-                    account_id=acc_from_api['account_id'],
-                    name=acc_from_api['name'],
-                    mask=acc_from_api['mask'],
-                    type=acc_from_api['type'].value,
-                    subtype=acc_from_api['subtype'].value
-                )
-                db.session.add(new_plaid_account)
-                added_count += 1
-
-        deleted_count = 0
-        # Delete old accounts
-        for local_acc in local_plaid_accounts:
-            if local_acc.account_id not in valid_plaid_account_ids:
-                db.session.delete(local_acc)
-                deleted_count += 1
+def sync_plaid_accounts(plaid_item_id=None):
+    with app.app_context():
+        if plaid_item_id:
+            plaid_items = [PlaidItem.query.get(plaid_item_id)]
+        else:
+            plaid_items = PlaidItem.query.filter_by(client_id=session['client_id']).all()
         
-        db.session.commit()
-
-        return jsonify({'status': 'success', 'added': added_count, 'deleted': deleted_count})
-
-    except Exception as e:
-        return jsonify({'error': str(e)})
+        for item in plaid_items:
+            if not item: # Handle case where plaid_item_id might not exist
+                continue
 
 @app.route('/api/plaid/fetch_transactions', methods=['POST'])
 def fetch_transactions():
