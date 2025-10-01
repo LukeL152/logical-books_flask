@@ -72,6 +72,7 @@ PLAID_SECRET = os.environ.get('PLAID_SECRET')
 PLAID_ENV = os.environ.get('PLAID_ENV', 'sandbox')
 PLAID_PRODUCTS = os.environ.get('PLAID_PRODUCTS', 'transactions').split(',')
 PLAID_COUNTRY_CODES = os.environ.get('PLAID_COUNTRY_CODES', 'US').split(',')
+PLAID_WEBHOOK_URL = os.environ.get('PLAID_WEBHOOK_URL')
 
 if PLAID_ENV == 'sandbox':
     host = plaid.Environment.Sandbox
@@ -2816,6 +2817,10 @@ def generate_hosted_link(client_id):
     if session.get('client_id') != client_id:
         return "Unauthorized", 403
 
+    if not PLAID_WEBHOOK_URL:
+        logging.error("PLAID_WEBHOOK_URL is not set in the environment.")
+        return jsonify({'error': 'Server configuration error'}), 500
+
     try:
         request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(
@@ -2825,6 +2830,7 @@ def generate_hosted_link(client_id):
             products=[Products(p) for p in PLAID_PRODUCTS],
             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
+            webhook=PLAID_WEBHOOK_URL,
             hosted_link={}
         )
         response = plaid_client.link_token_create(request)
