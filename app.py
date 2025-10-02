@@ -2803,8 +2803,6 @@ def create_link_token():
             products=[Products(p) for p in PLAID_PRODUCTS],
             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
-            is_mobile_app=True, # Enable Hosted Link for mobile
-            completion_redirect_uri=url_for('plaid_link_completion', _external=True) # Redirect after completion
         )
         response = plaid_client.link_token_create(request)
         return jsonify(response.to_dict())
@@ -3110,6 +3108,7 @@ def refresh_balances():
 
 def sync_plaid_accounts(plaid_item_id=None):
     with app.app_context():
+        app.logger.info(f'Syncing accounts for plaid_item_id: {plaid_item_id}')
         if plaid_item_id:
             plaid_items = [PlaidItem.query.get(plaid_item_id)]
         else:
@@ -3118,6 +3117,29 @@ def sync_plaid_accounts(plaid_item_id=None):
         for item in plaid_items:
             if not item: # Handle case where plaid_item_id might not exist
                 continue
+
+            try:
+                accounts_request = AccountsGetRequest(access_token=item.access_token)
+                accounts_response = plaid_client.accounts_get(accounts_request)
+                accounts = accounts_response['accounts']
+                app.logger.info(f'Found {len(accounts)} accounts for item {item.id}')
+
+                for account in accounts:
+                    # Check if the account already exists
+                    if not PlaidAccount.query.filter_by(account_id=account['account_id']).first():
+                        app.logger.info(f'Adding account {account["account_id"]} to the database')
+                        new_plaid_account = PlaidAccount(
+                            plaid_item_id=item.id,
+                            account_id=account['account_id'],
+                            name=account['name'],
+                            mask=account['mask'],
+                            type=str(account['type']),
+                            subtype=str(account['subtype'])
+                        )
+                        db.session.add(new_plaid_account)
+                db.session.commit()
+            except plaid.exceptions.ApiException as e:
+                app.logger.error(f"Error syncing accounts for item {item.id}: {e}")
 
 @app.route('/api/plaid/fetch_transactions', methods=['POST'])
 def fetch_transactions():
@@ -3216,6 +3238,26 @@ def delete_plaid_account():
     try:
         db.session.delete(account)
         db.session.commit()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/api/plaid/delete_institution', methods=['POST'])
+def delete_institution():
+    institution_id = request.json['institution_id']
+    item = PlaidItem.query.get_or_404(institution_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        # Remove the item from Plaid
+        remove_request = ItemRemoveRequest(access_token=item.access_token)
+        plaid_client.item_remove(remove_request)
+
+        # Remove the item from the database
+        db.session.delete(item)
+        db.session.commit()
+
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'error': str(e)})

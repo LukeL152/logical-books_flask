@@ -49,7 +49,7 @@
                     <button class="button is-small is-link add-account-button" data-plaid-item-id="{{ item.id }}">Add Account</button>
                     <button class="button is-small is-info refresh-balances-button" data-plaid-item-id="{{ item.id }}">Refresh Balances</button>
                     <button class="button is-small is-warning sync-accounts-button" data-plaid-item-id="{{ item.id }}">Sync Accounts</button>
-                    <button class="button is-small is-danger delete-item-button" data-plaid-item-id="{{ item.id }}">Delete Institution</button>
+                    <button class="button is-small is-danger delete-institution-button" data-institution-id="{{ item.id }}">Delete Institution</button>
                     <div class="mt-4">
                         <form class="fetch-transactions-form" data-plaid-item-id="{{ item.id }}">
                             <div class="field is-grouped">
@@ -194,6 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.execCommand('copy');
         alert('Link copied to clipboard!');
     });
+
+    const addAccountButtons = document.querySelectorAll('.add-account-button');
     addAccountButtons.forEach(button => {
         button.addEventListener('click', async (event) => {
             const plaidItemId = event.target.dataset.plaidItemId;
@@ -275,23 +277,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const deleteItemButtons = document.querySelectorAll('.delete-item-button');
-    deleteItemButtons.forEach(button => {
+    const deleteInstitutionButtons = document.querySelectorAll('.delete-institution-button');
+    deleteInstitutionButtons.forEach(button => {
         button.addEventListener('click', async (event) => {
             if (!confirm('Are you sure you want to delete this entire institution connection? This action cannot be undone.')) {
                 return;
             }
-            const plaidItemId = event.target.dataset.plaidItemId;
-            const response = await fetch('/api/plaid/delete_item', {
+            const institutionId = event.target.dataset.institutionId;
+            const response = await fetch('/api/plaid/delete_institution', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plaid_item_id: plaidItemId }),
+                body: JSON.stringify({ institution_id: institutionId }),
             });
             const result = await response.json();
             if (result.status === 'success') {
                 location.reload();
             } else {
-                alert(`Error deleting item: ${result.error}`);
+                alert(`Error deleting institution: ${result.error}`);
             }
         });
     });
