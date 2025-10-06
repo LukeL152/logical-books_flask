@@ -16,8 +16,8 @@ import io
 from datetime import datetime, timedelta
 from collections import defaultdict, OrderedDict
 import json
-from json import JSONEncoder
 import markdown
+import jwt, hashlib
 import plaid
 from plaid.api import plaid_api
 from plaid.model.products import Products
@@ -40,7 +40,7 @@ from markupsafe import Markup
 import click
 from flask.cli import with_appcontext
 
-class CustomJSONEncoder(JSONEncoder):
+class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
@@ -93,6 +93,46 @@ configuration = plaid.Configuration(
 
 api_client = plaid.ApiClient(configuration)
 plaid_client = plaid_api.PlaidApi(api_client)
+
+
+
+def verify_plaid_webhook(request):
+    """Verifies a Plaid webhook signature."""
+    # Get the verification header and JWT from the request
+    verification_header = request.headers.get('Plaid-Verification')
+    if not verification_header:
+        logging.error("Webhook received without Plaid-Verification header.")
+        return False, ("Webhook has no Plaid-Verification header", 400)
+
+    try:
+        jwt_token = json.loads(verification_header)
+        # Get the key ID from the JWT header
+        unverified_header = jwt.get_unverified_header(jwt_token)
+        key_id = unverified_header['kid']
+
+        # Fetch the key from Plaid
+        key_request = plaid.model.webhook_verification_key_get_request.WebhookVerificationKeyGetRequest(key_id=key_id)
+        key_response = plaid_client.webhook_verification_key_get(key_request)
+        key = key_response['key']
+
+        # Decode the JWT
+        decoded_jwt = jwt.decode(jwt_token, key, algorithms=['ES256'])
+
+        # Compare the body hash
+        request_body = request.get_data()
+        body_hash = hashlib.sha256(request_body).hexdigest()
+
+        if decoded_jwt['request_body_sha256'] != body_hash:
+            logging.error("Webhook body hash does not match.")
+            return False, ("Request body hash does not match", 403)
+
+        return True, None
+
+    except (jwt.InvalidTokenError, plaid.exceptions.ApiException, json.JSONDecodeError) as e:
+        logging.error(f"Error during webhook verification: {e}")
+        return False, (f"Webhook verification failed: {e}", 403)
+
+
 
 
 
@@ -2803,10 +2843,10 @@ def create_link_token():
             products=[Products(p) for p in PLAID_PRODUCTS],
             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
-            is_mobile_app=True, # Enable Hosted Link for mobile
-            completion_redirect_uri=url_for('plaid_link_completion', _external=True) # Redirect after completion
+            redirect_uri=url_for('plaid_link_completion'),
         )
         response = plaid_client.link_token_create(request)
+        app.logger.info(f"Created link token: {response['link_token']}")
         return jsonify(response.to_dict())
     except plaid.exceptions.ApiException as e:
         return jsonify(json.loads(e.body)), 500
@@ -2887,18 +2927,12 @@ def create_link_token_for_update():
             client_name="Logical Books",
             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
-            user=LinkTokenCreateRequestUser(
-                client_user_id=str(session['client_id'])
-            ),
             access_token=item.access_token,
-            update=LinkTokenCreateRequestUpdate(
-                account_selection_enabled=True
-            )
         )
         response = plaid_client.link_token_create(link_token_request)
         return jsonify(response.to_dict())
-    except Exception as e:
-        return jsonify({'error': str(e)})
+    except plaid.exceptions.ApiException as e:
+        return jsonify(json.loads(e.body)), 500
 
 def _exchange_public_token(public_token, institution_name, institution_id, client_id):
     try:
@@ -2931,17 +2965,19 @@ def _exchange_public_token(public_token, institution_name, institution_id, clien
         return new_item, None
     except plaid.exceptions.ApiException as e:
         logging.error(f"Plaid API exception during token exchange: {e}")
-        return None, json.loads(e.body)
+        return None, {'error': 'Plaid API error'}
 
 @app.route('/api/exchange_public_token', methods=['POST'])
 def exchange_public_token():
     public_token = request.json['public_token']
     institution_name = request.json['institution_name']
     institution_id = request.json['institution_id']
+    app.logger.info(f"Exchanging public token: {public_token}")
     
     new_item, error = _exchange_public_token(public_token, institution_name, institution_id, session['client_id'])
 
     if error:
+        app.logger.error(f"Error exchanging public token: {error}")
         if error.get('error_code') == 'ITEM_LOGIN_REQUIRED':
             return jsonify({'error': 'Item login required. The user may need to re-authenticate.'}), 409
         return jsonify(error), 500
@@ -2954,7 +2990,12 @@ def exchange_public_token():
 
 @app.route('/api/plaid_webhook', methods=['POST'])
 def plaid_webhook():
+    is_valid, error_response = verify_plaid_webhook(request)
+    if not is_valid:
+        return jsonify({'error': error_response[0]}), error_response[1]
+
     data = request.get_json()
+    app.logger.info(f"Received Plaid webhook: {data}")
     webhook_code = data.get('webhook_code')
     link_token = data.get('link_token')
 
@@ -3052,7 +3093,7 @@ def sync_transactions():
             pass # Not a Plaid error with a JSON body
 
         app.logger.error(f"Error syncing transactions: {e}")
-        return jsonify({'error': str(e)})
+        return jsonify({'error': 'An error occurred while syncing transactions.'}), 500
 
     return jsonify({'status': 'success', 'added': added_count})
 
@@ -3207,10 +3248,8 @@ def fetch_transactions():
                 added_count += 1
         
         db.session.commit()
-        return jsonify({'status': 'success', 'added': added_count})
-
     except Exception as e:
-        return jsonify({'error': str(e)})
+        return jsonify({'error': 'An error occurred while fetching transactions.'}), 500
 
 @app.route('/api/plaid/delete_item', methods=['POST'])
 def delete_plaid_item():
@@ -3230,7 +3269,7 @@ def delete_plaid_item():
 
         return jsonify({'status': 'success'})
     except Exception as e:
-        return jsonify({'error': str(e)})
+        return jsonify({'error': 'An error occurred while deleting the item.'}), 500
 
 @app.route('/api/plaid/delete_account', methods=['POST'])
 def delete_plaid_account():
@@ -3244,7 +3283,27 @@ def delete_plaid_account():
         db.session.commit()
         return jsonify({'status': 'success'})
     except Exception as e:
-        return jsonify({'error': str(e)})
+        return jsonify({'error': 'An error occurred while deleting the account.'}), 500
+@app.route('/api/plaid/delete_institution', methods=['POST'])
+def delete_institution():
+    institution_id = request.json['institution_id']
+    item = PlaidItem.query.get_or_404(institution_id)
+    if item.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    try:
+        # Remove the item from Plaid
+        remove_request = ItemRemoveRequest(access_token=item.access_token)
+        plaid_client.item_remove(remove_request)
+
+        # Remove the item from the database
+        db.session.delete(item)
+        db.session.commit()
+
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': 'An error occurred while deleting the institution.'}), 500
+
 
 def json_serial_for_cli(obj):
     """JSON serializer for objects not serializable by default json code"""
