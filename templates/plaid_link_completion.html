@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         onExit: (err, metadata) => {
+            console.log('onExit', err, metadata);
             // The user exited the Link flow.
             if (err != null) {
                 // The user encountered a Plaid error prior to exiting.
