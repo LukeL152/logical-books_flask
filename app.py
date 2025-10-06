@@ -2829,30 +2829,8 @@ def plaid_page():
 
 @app.route('/plaid_link_completion')
 def plaid_link_completion():
-    public_token = request.args.get('public_token')
-    if public_token:
-        link_token = session.pop('link_token', None)
-        if not link_token:
-            flash('Error: link_token not found in session.', 'danger')
-            return redirect(url_for('plaid_page'))
-
-        try:
-            link_get_request = LinkTokenGetRequest(link_token=link_token)
-            link_get_response = plaid_client.link_token_get(link_get_request)
-            institution_id = link_get_response['institution']['institution_id']
-            institution_name = link_get_response['institution']['name']
-
-            new_item, error = _exchange_public_token(public_token, institution_name, institution_id, session['client_id'])
-            if error:
-                flash(f"Error linking account: {error.get('error_message', 'Unknown error')}", 'danger')
-            else:
-                flash('Bank account linked successfully!', 'success')
-        except plaid.exceptions.ApiException as e:
-            flash(f"Error getting link token info: {e}", 'danger')
-    else:
-        # This is the case where the user is not returning from a redirect flow.
-        flash('Bank account linked successfully!', 'success')
-    return redirect(url_for('plaid_page'))
+    link_token = session.get('link_token')
+    return render_template('plaid_link_completion.html', link_token=link_token)
 
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
