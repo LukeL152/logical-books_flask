@@ -3149,7 +3149,8 @@ def refresh_balances():
 
 @app.route('/api/plaid/sync_accounts', methods=['POST'])
 def sync_plaid_accounts(plaid_item_id=None):
-    plaid_item_id = request.json['plaid_item_id']
+    if not plaid_item_id:
+        plaid_item_id = request.json['plaid_item_id']
     item = PlaidItem.query.get_or_404(plaid_item_id)
     if item.client_id != session['client_id']:
         return "Unauthorized", 403
