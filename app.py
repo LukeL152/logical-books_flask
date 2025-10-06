@@ -2836,6 +2836,7 @@ def plaid_link_completion():
 def create_link_token():
     try:
         app.logger.info('Creating link token...')
+        app.logger.info(f"PLAID_REDIRECT_URI: {os.environ.get('PLAID_REDIRECT_URI')}")
         link_request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
@@ -2844,7 +2845,7 @@ def create_link_token():
             products=[Products(p) for p in PLAID_PRODUCTS],
             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
-            redirect_uri=url_for('plaid_link_completion'),
+            redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),
         )
         app.logger.info(f"Link request: {link_request}")
         response = plaid_client.link_token_create(link_request)
