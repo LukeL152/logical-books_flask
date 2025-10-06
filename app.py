@@ -2835,7 +2835,8 @@ def plaid_link_completion():
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     try:
-        request = LinkTokenCreateRequest(
+        app.logger.info('Creating link token...')
+        link_request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
             ),
@@ -2845,12 +2846,17 @@ def create_link_token():
             language='en',
             redirect_uri=url_for('plaid_link_completion'),
         )
-        response = plaid_client.link_token_create(request)
+        app.logger.info(f"Link request: {link_request}")
+        response = plaid_client.link_token_create(link_request)
         session['link_token'] = response['link_token']
         app.logger.info(f"Created link token: {response['link_token']}")
         return jsonify(response.to_dict())
     except plaid.exceptions.ApiException as e:
+        app.logger.error(f"Plaid API exception: {e}")
         return jsonify(json.loads(e.body)), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in create_link_token: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/generate_hosted_link/<int:client_id>', methods=['POST'])
 def generate_hosted_link(client_id):
