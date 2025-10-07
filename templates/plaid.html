@@ -131,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await fetch('/api/create_link_token', { method: 'POST' });
         console.log('Response from create_link_token:', response);
         const { link_token } = await response.json();
+        localStorage.setItem('plaid_link_token', link_token); // save it
         console.log('Link token received:', link_token);
 
         const handler = Plaid.create({

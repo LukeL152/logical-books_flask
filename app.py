@@ -2887,6 +2887,13 @@ def plaid_page():
                            accounts=accounts, 
                            client=client)
 
+@app.route('/api/current_link_token')
+def current_link_token():
+    t = session.get('link_token')
+    if not t:
+        return jsonify({'error': 'no token in session'}), 404
+    return jsonify({'link_token': t})
+
 @app.route("/plaid/oauth-return")
 def plaid_oauth_return():
     return render_template("plaid_oauth_return.html")
