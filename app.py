@@ -48,7 +48,23 @@ class CustomJSONEncoder(json.JSONEncoder):
             return str(obj)
         return JSONEncoder.default(self, obj)
 
+from flask_talisman import Talisman
+
 app = Flask(__name__)
+
+csp = {
+    'default-src': ''self'',
+    'script-src': [
+        ''self'',
+        ''unsafe-inline'',
+        'https://cdn.plaid.com/link/v2/stable/link-initialize.js'
+    ],
+    'frame-src': 'https://cdn.plaid.com/',
+    'connect-src': 'https://production.plaid.com/'
+}
+
+Talisman(app, content_security_policy=csp)
+
 import logging
 logging.basicConfig(level=logging.INFO)
 app.json_encoder = CustomJSONEncoder
