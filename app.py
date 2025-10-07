@@ -2923,9 +2923,8 @@ def plaid_link_completion():
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     try:
-        app.logger.info('Creating link token...')
-        app.logger.info(f"PLAID_REDIRECT_URI: {os.environ.get('PLAID_REDIRECT_URI', 'https://logical-books.your-public-domain.com/plaid/oauth-return')}")
-        link_request = LinkTokenCreateRequest(
+        app.logger.info(f"Using redirect_uri: {os.environ.get('PLAID_REDIRECT_URI')}")
+        request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
             ),
@@ -2935,15 +2934,13 @@ def create_link_token():
             language='en',
             redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),
         )
-        app.logger.info(f"Link request: {link_request}")
-    response = plaid_client.link_token_create(request)
-    session['link_token'] = response['link_token']
-    app.logger.warning(">> CREATED link_token prefix=%s redirect_uri=%s",
-                       response['link_token'][:24],
-                       os.environ.get('PLAID_REDIRECT_URI'))
-    return jsonify(response.to_dict())
+        response = plaid_client.link_token_create(request)
+        session['link_token'] = response['link_token']
+        app.logger.warning(">> CREATED link_token prefix=%s redirect_uri=%s",
+                           response['link_token'][:24],
+                           os.environ.get('PLAID_REDIRECT_URI'))
+        return jsonify(response.to_dict())
     except plaid.exceptions.ApiException as e:
-        app.logger.error(f"Plaid API exception: {e}")
         return jsonify(json.loads(e.body)), 500
     except Exception as e:
         app.logger.error(f"Unexpected error in create_link_token: {e}")
