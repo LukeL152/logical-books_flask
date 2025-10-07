@@ -122,7 +122,17 @@ csp = {
     "worker-src": ["blob:"],
 }
 
-Talisman(app, content_security_policy=csp)
+Talisman(app, content_security_policy=csp, permissions_policy={
+    "accelerometer": "*",
+    "camera": "*",
+    "encrypted-media": "*",
+    "geolocation": "()",
+    "gyroscope": "()",
+    "magnetometer": "()",
+    "microphone": "()",
+    "payment": "()",
+    "usb": "()"
+})
 
 import logging
 logging.basicConfig(level=logging.INFO)
