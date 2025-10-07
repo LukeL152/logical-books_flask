@@ -53,79 +53,40 @@ from flask_talisman import Talisman
 app = Flask(__name__)
 
 csp = {
-    # Defaults
-    "default-src": ["'self'"],
-    "base-uri": ["'self'"],
-    "object-src": ["'none'"],
-
-    # Scripts (use hosts, not file paths)
+    "default-src": "'self'",
+    "base-uri": "'self'",
+    "object-src": "'none'",
     "script-src": [
-        "'self'",
-        # Plaid + your CDNs
-        "https://*.plaid.com",
-        "https://cdn.plaid.com",
-        "https://code.jquery.com",
-        "https://cdn.datatables.net",
-        "https://cdn.jsdelivr.net",
-        "https://cdnjs.cloudflare.com",
-        # If your current bundle needs it (Plaid often does)
-        "'unsafe-eval'",
-        # If you truly need inline <script>, keep this (better: switch to nonces)
-        "'unsafe-inline'",
-        # keep any 'sha256-...' hashes here if you use them
+        "'self'", "'unsafe-inline'", "'unsafe-eval'",
+        "https://*.plaid.com", "https://cdn.plaid.com",
+        "https://code.jquery.com", "https://cdn.datatables.net",
+        "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com",
     ],
-
-    # Styles
     "style-src": [
-        "'self'",
-        "'unsafe-inline'",  # consider moving to nonces later
-        "http://localhost:8001",
-        "https://cdn.jsdelivr.net",
-        "https://cdnjs.cloudflare.com",
-        "https://cdn.datatables.net",
-        "https://cdn.jsdelivr.net",
+        "'self'", "'unsafe-inline'",
+        "http://localhost:8001", "https://cdn.jsdelivr.net",
+        "https://cdnjs.cloudflare.com", "https://cdn.datatables.net",
     ],
-
-    # Workers — ✅ the fix:
-    "worker-src": [
-        "'self'",
-        "blob:",
-        "https://*.plaid.com",
-    ],
-    # Fallback for older browsers (some still consult child-src for workers)
-    "child-src": [
-        "'self'",
-        "blob:",
-        "https://*.plaid.com",
-    ],
-
-    # Frames (Plaid Link runs in an iframe)
-    "frame-src": [
-        "https://*.plaid.com",
-        "https://cdn.plaid.com",
-    ],
-
-    # XHR/fetch/WebSocket endpoints
+    "frame-src": ["https://*.plaid.com", "https://cdn.plaid.com"],
     "connect-src": [
-        "'self'",
-        "https://*.plaid.com",
-        "https://cdn.plaid.com",
-        "https://analytics.plaid.com",
-        "https://cdn.jsdelivr.net",
-        "http://127.0.0.1:8001",
-        "https://logical-books.lotr.lan",
+        "'self'", "https://*.plaid.com", "https://cdn.plaid.com",
+        "https://analytics.plaid.com", "https://cdn.jsdelivr.net",
+        "http://127.0.0.1:8001", "https://logical-books.lotr.lan",
     ],
-
-    # Fonts / Images
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
     "img-src": ["'self'", "data:"],
-    "worker-src": ["blob:"],
-}
 
+    # 👇 key change
+    "worker-src": ["'self'", "blob:", "https://*.plaid.com"],
+    # (optional) keep for older UAs; modern CSP uses worker-src
+    "child-src": ["'self'", "blob:", "https://*.plaid.com"],
+}
 Talisman(app, content_security_policy=csp, permissions_policy={
+    # If you *don’t* need this, drop the directive entirely.
+    # Otherwise, make it permissive to silence the console noise:
+    "encrypted-media": "*",
     "accelerometer": "*",
     "camera": "*",
-    "encrypted-media": "*",
     "geolocation": "()",
     "gyroscope": "()",
     "magnetometer": "()",
