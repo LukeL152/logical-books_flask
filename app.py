@@ -3055,8 +3055,8 @@ def _exchange_public_token(public_token, institution_name, institution_id, clien
 @app.route('/api/exchange_public_token', methods=['POST'])
 def exchange_public_token():
     public_token = request.json['public_token']
-    institution_name = request.json['institution_name']
-    institution_id = request.json['institution_id']
+    institution_name = request.json.get('institution_name')
+    institution_id = request.json.get('institution_id')
     app.logger.info(f"Exchanging public token: {public_token}")
     
     new_item, error = _exchange_public_token(public_token, institution_name, institution_id, session['client_id'])
