@@ -57,13 +57,38 @@ csp = {
     "script-src": [
         "'self'",
         "'unsafe-inline'",
-        "https://cdn.plaid.com/link/v2/stable/link-initialize.js"
+        "https://cdn.plaid.com/link/v2/stable/link-initialize.js",
+        "https://code.jquery.com",
+        "https://cdn.datatables.net",
+        "https://cdn.jsdelivr.net",
+        "https://cdnjs.cloudflare.com"
+    ],
+    "style-src": [
+        "'self'",
+        "'unsafe-inline'",
+        "http://localhost:8001",
+        "https://cdn.jsdelivr.net",
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.datatables.net",
+        "https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css",
+        "https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css"
     ],
     "frame-src": "https://cdn.plaid.com/",
-    "connect-src": "https://production.plaid.com/"
+    "connect-src": ["https://production.plaid.com/", "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan"],
+    "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
+    "img-src": ["'self'", "data:"],
 }
 
-Talisman(app, content_security_policy=csp)
+Talisman(app, content_security_policy=csp, permissions_policy={
+    "accelerometer": "()",
+    "camera": "()",
+    "geolocation": "()",
+    "gyroscope": "()",
+    "magnetometer": "()",
+    "microphone": "()",
+    "payment": "()",
+    "usb": "()"
+})
 
 import logging
 logging.basicConfig(level=logging.INFO)
