@@ -117,6 +117,11 @@ def tojson_filter(obj):
 def nl2br(s):
     return Markup(s.replace('\n', '<br>\n')) if s else ''
 
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=True,
+)
+
 app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real application
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'bookkeeping.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -2882,6 +2887,10 @@ def plaid_page():
                            accounts=accounts, 
                            client=client)
 
+@app.route("/plaid/oauth-return")
+def plaid_oauth_return():
+    return render_template("plaid_oauth_return.html")
+
 @app.route('/plaid_link_completion')
 def plaid_link_completion():
     try:
@@ -2904,7 +2913,7 @@ def plaid_link_completion():
 def create_link_token():
     try:
         app.logger.info('Creating link token...')
-        app.logger.info(f"PLAID_REDIRECT_URI: {os.environ.get('PLAID_REDIRECT_URI')}")
+        app.logger.info(f"PLAID_REDIRECT_URI: {os.environ.get('PLAID_REDIRECT_URI', 'https://logical-books.your-public-domain.com/plaid/oauth-return')}")
         link_request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
