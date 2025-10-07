@@ -53,14 +53,14 @@ from flask_talisman import Talisman
 app = Flask(__name__)
 
 csp = {
-    'default-src': ''self'',
-    'script-src': [
-        ''self'',
-        ''unsafe-inline'',
-        'https://cdn.plaid.com/link/v2/stable/link-initialize.js'
+    "default-src": "'self'",
+    "script-src": [
+        "'self'",
+        "'unsafe-inline'",
+        "https://cdn.plaid.com/link/v2/stable/link-initialize.js"
     ],
-    'frame-src': 'https://cdn.plaid.com/',
-    'connect-src': 'https://production.plaid.com/'
+    "frame-src": "https://cdn.plaid.com/",
+    "connect-src": "https://production.plaid.com/"
 }
 
 Talisman(app, content_security_policy=csp)
