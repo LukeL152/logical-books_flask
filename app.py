@@ -119,8 +119,7 @@ def nl2br(s):
 
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_DOMAIN="logical-books.lotr.lan"
+    SESSION_COOKIE_SECURE=True
 )
 
 app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real application
@@ -2360,8 +2359,7 @@ def add_transaction_rule():
         db.session.commit()
         flash('Transaction rule created successfully.', 'success')
         return redirect(url_for('transaction_rules'))
-    
-    return render_template('add_transaction_rule.html', clients=Client.query.all(), categories=categories, accounts=accounts)
+        return render_template('add_transaction_rule.html', clients=Client.query.all(), categories=categories, accounts=accounts)
 
 @app.route('/add_category_rule', methods=['POST'])
 def add_category_rule():
@@ -2886,10 +2884,9 @@ def plaid_page():
     if not client_id:
         return redirect(url_for('clients'))
 
-    active_client_id = session['client_id']
-    client = Client.query.get(active_client_id)
-    plaid_items = PlaidItem.query.filter_by(client_id=active_client_id).all()
-    accounts = Account.query.filter_by(client_id=active_client_id).order_by(Account.name).all()
+    client = Client.query.get(client_id)
+    plaid_items = PlaidItem.query.filter_by(client_id=client_id).all()
+    accounts = Account.query.filter_by(client_id=client_id).order_by(Account.name).all()
     
     return render_template('plaid.html', 
                            plaid_items=plaid_items, 
