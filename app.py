@@ -2908,6 +2908,7 @@ def create_link_token():
         )
         response = plaid_client.link_token_create(request)
         link_token = response['link_token']
+        session['link_token'] = link_token # Store link_token in session
         db.session.add(PendingPlaidLink(link_token=link_token, client_id=session['client_id'], purpose='standard'))
         db.session.commit()
         return jsonify(response.to_dict())
