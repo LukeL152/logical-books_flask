@@ -2929,22 +2929,6 @@ def create_link_token():
         app.logger.error(f"Unexpected error in create_link_token: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
-@app.route('/api/current_link_token')
-def current_link_token():
-    client_id = session.get('client_id')
-    if not client_id:
-        return jsonify({'link_token': None})
-
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    pending_link = PendingPlaidLink.query.filter(
-        PendingPlaidLink.client_id == client_id,
-        PendingPlaidLink.created_at >= seven_days_ago
-    ).order_by(PendingPlaidLink.created_at.desc()).first()
-
-    if pending_link:
-        return jsonify({'link_token': pending_link.link_token})
-    else:
-        return jsonify({'link_token': None})
 
 @app.route('/api/generate_hosted_link/<int:client_id>', methods=['POST'])
 def generate_hosted_link(client_id):
