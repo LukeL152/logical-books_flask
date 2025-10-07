@@ -74,7 +74,7 @@ csp = {
         "https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-quartz.css"
     ],
     "frame-src": "https://cdn.plaid.com/",
-    "connect-src": ["https://production.plaid.com/", "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan"],
+    "connect-src": ["https://production.plaid.com/", "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan", "https://analytics.plaid.com"],
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
     "img-src": ["'self'", "data:"],
     "worker-src": ["blob:"],
@@ -82,8 +82,8 @@ csp = {
 }
 
 Talisman(app, content_security_policy=csp, permissions_policy={
-    "accelerometer": "()",
-    "camera": "()",
+    "accelerometer": "*",
+    "camera": "*",
     "geolocation": "()",
     "gyroscope": "()",
     "magnetometer": "()",
