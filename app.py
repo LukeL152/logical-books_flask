@@ -984,6 +984,10 @@ def delete_vendor(vendor_id):
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
+    client_id = session.get('client_id')
+    if not client_id:
+        return redirect(url_for('clients'))
+
     today = datetime.now().date()
     start_date = None
     end_date = today
