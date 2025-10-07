@@ -180,8 +180,7 @@ migrate = Migrate(app, db)
 scheduler = APScheduler()
 
 if __name__ == '__main__':
-    scheduler.init_app(app)
-    scheduler.start()
+    app.run(debug=True, port=8001)
 
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
