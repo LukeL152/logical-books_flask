@@ -120,6 +120,7 @@ def nl2br(s):
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_DOMAIN="logical-books.lotr.lan"
 )
 
 app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real application
@@ -2896,11 +2897,9 @@ def current_link_token():
 
 @app.route("/plaid/oauth-return")
 def plaid_oauth_return():
-    app.logger.info('OAuth return page reached.')
-    link_token = session.get('link_token')
-    if not link_token:
-        # Defensive: you can redirect to /plaid and start over or show a friendly error
-        return "Missing link token in session; please restart linking.", 400
+    app.logger.warning(">> HIT /plaid/oauth-return  href=%s", request.url)
+    # do NOT create a new link token here
+    link_token = session.get('link_token') or request.args.get('lt')
     return render_template("plaid_oauth_return.html", link_token=link_token)
 
 @app.route('/plaid_link_completion')
@@ -2937,10 +2936,12 @@ def create_link_token():
             redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),
         )
         app.logger.info(f"Link request: {link_request}")
-        response = plaid_client.link_token_create(link_request)
-        session['link_token'] = response['link_token']
-        app.logger.info(f"Created link token: {response['link_token']}")
-        return jsonify(response.to_dict())
+    response = plaid_client.link_token_create(request)
+    session['link_token'] = response['link_token']
+    app.logger.warning(">> CREATED link_token prefix=%s redirect_uri=%s",
+                       response['link_token'][:24],
+                       os.environ.get('PLAID_REDIRECT_URI'))
+    return jsonify(response.to_dict())
     except plaid.exceptions.ApiException as e:
         app.logger.error(f"Plaid API exception: {e}")
         return jsonify(json.loads(e.body)), 500

@@ -157,6 +157,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('An unexpected error occurred.');
                 }
             },
+            onEvent: (ev, md) => {
+              if (ev === 'ERROR' || ev === 'HANDOFF') console.log('Link event', ev, md);
+            },
+            onExit: (err, md) => console.warn('Link exit', err, md),
         });
         handler.open();
     });
