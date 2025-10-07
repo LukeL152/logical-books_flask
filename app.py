@@ -119,24 +119,20 @@ csp = {
     # Fonts / Images
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
     "img-src": ["'self'", "data:"],
+    "worker-src": ["blob:"],,
 }
 
-Talisman(
-    app,
-    content_security_policy=csp,
-    # You can start in report-only to verify:
-    # content_security_policy_report_only=True,
-    permissions_policy={
-        "accelerometer": "*",
-        "camera": "*",
-        "geolocation": "()",
-        "gyroscope": "()",
-        "magnetometer": "()",
-        "microphone": "()",
-        "payment": "()",
-        "usb": "()",
-    },
-)
+Talisman(app, content_security_policy=csp, permissions_policy={
+    "accelerometer": "*",
+    "camera": "*",
+    "encrypted-media": "*",
+    "geolocation": "()",
+    "gyroscope": "()",
+    "magnetometer": "()",
+    "microphone": "()",
+    "payment": "()",
+    "usb": "()"
+})
 
 import logging
 logging.basicConfig(level=logging.INFO)
