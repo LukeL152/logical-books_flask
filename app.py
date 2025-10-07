@@ -78,6 +78,7 @@ csp = {
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
     "img-src": ["'self'", "data:"],
     "worker-src": ["blob:"],
+    "worker-src": ["blob:"],
 }
 
 Talisman(app, content_security_policy=csp, permissions_policy={
