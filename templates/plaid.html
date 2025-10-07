@@ -138,11 +138,14 @@ document.addEventListener('DOMContentLoaded', () => {
             token: link_token,
             onSuccess: async (public_token, metadata) => {
                 console.log('Plaid Link onSuccess callback fired.');
+                console.log('public_token:', public_token);
+                console.log('metadata:', metadata);
                 const response = await fetch('/api/exchange_public_token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         public_token: public_token,
+                        link_token: link_token, // ← include this
                         institution_name: metadata.institution.name,
                         institution_id: metadata.institution.institution_id
                     }),

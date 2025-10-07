@@ -1,0 +1,33 @@
+<h1>✅ You are on /plaid/oauth-return</h1>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+  console.log("oauth-return href:", window.location.href);
+  (async () => {
+    const resp = await fetch('/api/current_link_token');
+    const { link_token } = await resp.json();
+    console.log("oauth-return link_token prefix:", (link_token||'').slice(0,18));
+
+    const handler = Plaid.create({
+      token: link_token,                    // must be the ORIGINAL token
+      receivedRedirectUri: window.location.href,  // REQUIRED for OAuth resume
+      onSuccess: async (public_token, md) => {
+        console.log("Link onSuccess (oauth-return)", md);
+        console.log("public_token:", public_token);
+        console.log("metadata:", md);
+        await fetch('/api/exchange_public_token', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            public_token,
+            link_token: link_token, // ← add this so backend can resolve client deterministically
+            institution_name: md?.institution?.name || null,
+            institution_id:   md?.institution?.institution_id || null
+          })
+        });
+        window.location.replace('/plaid');
+      },
+      onExit: (err, md) => console.warn("Link onExit (oauth-return)", err, md),
+      onEvent: (ev, md) => console.log("Link onEvent (oauth-return)", ev, md),
+    });
+    handler.open();
+  })();
+</script>
