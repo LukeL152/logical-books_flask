@@ -78,6 +78,7 @@ csp = {
 
     # 👇 key change
     "worker-src": ["'self'", "blob:", "https://*.plaid.com"],
+    "child-src": ["'self'", "blob:", "https://*.plaid.com"],
     # (optional) keep for older UAs; modern CSP uses worker-src
     "child-src": ["'self'", "blob:", "https://*.plaid.com"],
 }
