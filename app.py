@@ -68,8 +68,11 @@ csp = {
         "https://cdnjs.cloudflare.com", "https://cdn.datatables.net",
     ],
     "frame-src": ["https://*.plaid.com", "https://cdn.plaid.com"],
-    "connect-src": ["'self'", "https://*.plaid.com", "https://cdn.plaid.com", "https://analytics.plaid.com", "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan", "https://*.sentry.io"],
-
+    "connect-src": [
+        "'self'", "https://*.plaid.com", "https://cdn.plaid.com",
+        "https://analytics.plaid.com", "https://cdn.jsdelivr.net",
+        "http://127.0.0.1:8001", "https://logical-books.lotr.lan",
+    ],
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
     "img-src": ["'self'", "data:"],
 
