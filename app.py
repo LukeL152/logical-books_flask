@@ -76,7 +76,7 @@ csp = {
     "frame-src": "https://cdn.plaid.com/",
     "connect-src": ["https://production.plaid.com/", "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan"],
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
-    "img-src": ["'self'", "data:"]
+    "img-src": ["'self'", "data:"],
     "worker-src": ["blob:"],
 }
 
