@@ -2882,6 +2882,10 @@ def plaid_page():
     if 'client_id' not in session:
         return redirect(url_for('clients'))
     
+    client_id = session.get('client_id')
+    if not client_id:
+        return redirect(url_for('clients'))
+
     active_client_id = session['client_id']
     client = Client.query.get(active_client_id)
     plaid_items = PlaidItem.query.filter_by(client_id=active_client_id).all()
