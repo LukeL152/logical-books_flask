@@ -178,8 +178,10 @@ def verify_plaid_webhook(req):
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 scheduler = APScheduler()
-scheduler.init_app(app)
-scheduler.start()
+
+if __name__ == '__main__':
+    scheduler.init_app(app)
+    scheduler.start()
 
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -3228,53 +3230,56 @@ def refresh_balances():
     else:
         return jsonify({'error': 'Failed to update balances'}), 500
 
-@app.route('/api/plaid/sync_accounts', methods=['POST'])
 def sync_plaid_accounts(plaid_item_id=None):
-    if not plaid_item_id:
-        plaid_item_id = request.json['plaid_item_id']
-    item = PlaidItem.query.get_or_404(plaid_item_id)
-    if item.client_id != session['client_id']:
-        return "Unauthorized", 403
-
-    try:
-        # Sync accounts
-        accounts_request = AccountsGetRequest(access_token=item.access_token)
-        accounts_response = plaid_client.accounts_get(accounts_request)
-        plaid_accounts_from_api = accounts_response['accounts']
-        valid_plaid_account_ids = {acc['account_id'] for acc in plaid_accounts_from_api}
-
-        # Sync DB with Plaid's account list
-        local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=item.id).all()
-        local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
-
-        added_count = 0
-        # Add new accounts
-        for acc_from_api in plaid_accounts_from_api:
-            if acc_from_api['account_id'] not in local_plaid_account_ids:
-                new_plaid_account = PlaidAccount(
-                    plaid_item_id=item.id,
-                    account_id=acc_from_api['account_id'],
-                    name=acc_from_api['name'],
-                    mask=acc_from_api['mask'],
-                    type=acc_from_api['type'].value,
-                    subtype=acc_from_api['subtype'].value
-                )
-                db.session.add(new_plaid_account)
-                added_count += 1
-
-        deleted_count = 0
-        # Delete old accounts
-        for local_acc in local_plaid_accounts:
-            if local_acc.account_id not in valid_plaid_account_ids:
-                db.session.delete(local_acc)
-                deleted_count += 1
+    with app.app_context():
+        app.logger.info(f'Syncing accounts for plaid_item_id: {plaid_item_id}')
+        if plaid_item_id:
+            plaid_items = [PlaidItem.query.get(plaid_item_id)]
+        else:
+            plaid_items = PlaidItem.query.filter_by(client_id=session['client_id']).all()
         
-        db.session.commit()
+        for item in plaid_items:
+            if not item: # Handle case where plaid_item_id might not exist
+                continue
 
-        return jsonify({'status': 'success', 'added': added_count, 'deleted': deleted_count})
+            try:
+                accounts_request = AccountsGetRequest(access_token=item.access_token)
+                accounts_response = plaid_client.accounts_get(accounts_request)
+                accounts = accounts_response['accounts']
+                app.logger.info(f'Found {len(accounts)} accounts for item {item.id}')
+                
+                valid_plaid_account_ids = {acc['account_id'] for acc in accounts}
+                local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=item.id).all()
+                local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
 
-    except Exception as e:
-        return jsonify({'error': str(e)})
+                added_count = 0
+                for account in accounts:
+                    # Check if the account already exists
+                    if account['account_id'] not in local_plaid_account_ids:
+                        app.logger.info(f'Adding account {account["account_id"]} to the database')
+                        new_plaid_account = PlaidAccount(
+                            plaid_item_id=item.id,
+                            account_id=account['account_id'],
+                            name=account['name'],
+                            mask=account['mask'],
+                            type=account['type'].value,
+                            subtype=account['subtype'].value
+                        )
+                        db.session.add(new_plaid_account)
+                        added_count += 1
+                
+                deleted_count = 0
+                # Delete old accounts
+                for local_acc in local_plaid_accounts:
+                    if local_acc.account_id not in valid_plaid_account_ids:
+                        db.session.delete(local_acc)
+                        deleted_count += 1
+
+                db.session.commit()
+                app.logger.info(f"Sync complete for item {item.id}. Added: {added_count}, Deleted: {deleted_count}")
+
+            except plaid.exceptions.ApiException as e:
+                app.logger.error(f"Error syncing accounts for item {item.id}: {e}")
 
 @app.route('/api/plaid/fetch_transactions', methods=['POST'])
 def fetch_transactions():
