@@ -77,7 +77,7 @@ csp = {
     "connect-src": ["https://production.plaid.com/", "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan", "https://analytics.plaid.com"],
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
     "img-src": ["'self'", "data:"],
-    "worker-src": ["blob:"],
+    "worker-src": ["'self'", "blob:", "https://*.plaid.com"],
 
 }
 
