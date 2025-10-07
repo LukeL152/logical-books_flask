@@ -2884,8 +2884,21 @@ def plaid_page():
 
 @app.route('/plaid_link_completion')
 def plaid_link_completion():
-    link_token = session.get('link_token')
-    return render_template('plaid_link_completion.html', link_token=link_token)
+    try:
+        request = LinkTokenCreateRequest(
+            user=LinkTokenCreateRequestUser(
+                client_user_id=str(session['client_id'])
+            ),
+            client_name="My App",
+            products=[Products(p) for p in PLAID_PRODUCTS],
+            country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
+            language='en',
+            redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),
+        )
+        response = plaid_client.link_token_create(request)
+        return render_template('plaid_link_completion.html', link_token=response['link_token'])
+    except plaid.exceptions.ApiException as e:
+        return jsonify(json.loads(e.body)), 500
 
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
