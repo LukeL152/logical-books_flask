@@ -2896,7 +2896,11 @@ def current_link_token():
 
 @app.route("/plaid/oauth-return")
 def plaid_oauth_return():
-    return render_template("plaid_oauth_return.html")
+    link_token = session.get('link_token')
+    if not link_token:
+        # Defensive: you can redirect to /plaid and start over or show a friendly error
+        return "Missing link token in session; please restart linking.", 400
+    return render_template("plaid_oauth_return.html", link_token=link_token)
 
 @app.route('/plaid_link_completion')
 def plaid_link_completion():
