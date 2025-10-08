@@ -59,7 +59,7 @@ csp = {
 
     "script-src": [
         "'self'", "'unsafe-inline'", "'unsafe-eval'",
-        "https://analytics.plaid.com", "https://cdn.plaid.com", "https://*.seondnsresolve.com", "blob:",
+        "https://plaid.com", "https://*.plaid.com", "https://seondnsresolve.com", "https://*.seondnsresolve.com", "blob:",
         "https://code.jquery.com", "https://cdn.datatables.net",
         "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com",
     ],
@@ -70,11 +70,11 @@ csp = {
         "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://cdn.datatables.net",
     ],
 
-    "frame-src": ["https://*.plaid.com", "https://cdn.plaid.com"],
+    "frame-src": ["https://plaid.com", "https://*.plaid.com", "https://cdn.plaid.com"],
 
     "connect-src": [
         "'self'",
-        "https://*.plaid.com", "https://cdn.plaid.com", "https://analytics.plaid.com", "https://*.seondnsresolve.com",
+        "https://plaid.com", "https://*.plaid.com", "https://seondnsresolve.com", "https://*.seondnsresolve.com", "https://analytics.plaid.com",
         "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan",
     ],
 
@@ -82,7 +82,7 @@ csp = {
     "img-src": ["'self'", "data:"],
 
     # Workers (modern browsers use this)
-    "worker-src": ["'self'", "blob:", "https://*.plaid.com", "https://*.seondnsresolve.com"],
+    "worker-src": ["'self'", "blob:", "https://plaid.com", "https://*.plaid.com", "https://seondnsresolve.com", "https://*.seondnsresolve.com"],
 
     # For older browsers that fall back from worker-src
     #"child-src": ["'self'", "blob:", "https://*.plaid.com"],
