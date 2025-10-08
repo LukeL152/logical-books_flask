@@ -57,52 +57,71 @@ csp = {
     "base-uri": "'self'",
     "object-src": "'none'",
 
+    # Plaid + your libs. Keep 'unsafe-eval' only if you actually need it.
     "script-src": [
         "'self'", "'unsafe-inline'", "'unsafe-eval'",
-        "https://plaid.com", "https://*.plaid.com", "https://seondnsresolve.com", "https://*.seondnsresolve.com", "blob:",
+        "https://cdn.plaid.com", "https://plaid.com", "https://*.plaid.com",
+        "https://seondnsresolve.com", "https://*.seondnsresolve.com",
+        "https://seon.io", "https://*.seon.io",
         "https://code.jquery.com", "https://cdn.datatables.net",
         "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com",
+        "blob:"  # (not used to allow workers; included for completeness if any inline blob scripts)
     ],
 
     "style-src": [
         "'self'", "'unsafe-inline'",
-        "http://localhost:8001",
         "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://cdn.datatables.net",
+        # remove localhost:8001 in prod
+        "http://localhost:8001"
     ],
 
-    "frame-src": ["https://plaid.com", "https://*.plaid.com", "https://cdn.plaid.com"],
+    # Plaid renders in iframes you open – allow their frames
+    "frame-src": [
+        "https://cdn.plaid.com", "https://plaid.com", "https://*.plaid.com"
+    ],
 
+    # XHR/fetch destinations – be explicit about cdn.plaid.com too
     "connect-src": [
         "'self'",
-        "https://plaid.com", "https://*.plaid.com", "https://seondnsresolve.com", "https://*.seondnsresolve.com", "https://analytics.plaid.com",
-        "https://cdn.jsdelivr.net", "http://127.0.0.1:8001", "https://logical-books.lotr.lan",
+        "https://cdn.plaid.com", "https://plaid.com", "https://*.plaid.com",
+        "https://analytics.plaid.com",
+        "https://seondnsresolve.com", "https://*.seondnsresolve.com",
+        "https://seon.io", "https://*.seon.io",
+        "https://cdn.jsdelivr.net",
+        # dev-only:
+        "http://127.0.0.1:8001", "https://logical-books.lotr.lan"
     ],
 
+    # Fonts + images
     "font-src": ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "data:"],
-    "img-src": ["'self'", "data:"],
+    "img-src":  ["'self'", "data:", "https://cdn.plaid.com", "https://plaid.com", "https://*.plaid.com"],
 
-    # Workers (modern browsers use this)
-    "worker-src": ["'self'", "blob:", "https://plaid.com", "https://*.plaid.com", "https://seondnsresolve.com", "https://*.seondnsresolve.com"],
+    # Critical: allow workers from blob: and Plaid CDN
+    "worker-src": [
+        "'self'", "blob:", "https://cdn.plaid.com", "https://plaid.com", "https://*.plaid.com",
+        "https://seondnsresolve.com", "https://*.seondnsresolve.com",
+        "https://seon.io", "https://*.seon.io"
+    ],
 
-    # For older browsers that fall back from worker-src
-    #"child-src": ["'self'", "blob:", "https://*.plaid.com"],
+    # Backstop for older browsers that ignore worker-src
+    #"child-src": ["'self'", "blob:"],
 }
 
-Talisman(app,
-    content_security_policy=csp,
-    permissions_policy={
-        # tighten if you don't need these features
-        "encrypted-media": "*",
-        "accelerometer": "()",
-        "camera": "*",
-        "geolocation": "()",
-        "gyroscope": "()",
-        "magnetometer": "()",
-        "microphone": "()",
-        "payment": "()",
-        "usb": "()",
-    }
-)
+# Talisman(app,
+#     content_security_policy=csp,
+#     permissions_policy={
+#         # tighten if you don't need these features
+#         "encrypted-media": "()",
+#         "accelerometer": "()",
+#         "camera": "()",
+#         "geolocation": "()",
+#         "gyroscope": "()",
+#         "magnetometer": "()",
+#         "microphone": "()",
+#         "payment": "()",
+#         "usb": "()",
+#     }
+# )
 
 import logging
 logging.basicConfig(level=logging.INFO)
