@@ -3,9 +3,31 @@
 <script>
   console.log("oauth-return href:", window.location.href);
   (async () => {
-    const resp = await fetch('/api/current_link_token');
-    const { link_token } = await resp.json();
-    console.log("oauth-return link_token prefix:", (link_token||'').slice(0,18));
+    let link_token = null;
+    try {
+      const resp = await fetch('/api/current_link_token');
+      if (resp.ok) {
+        const data = await resp.json();
+        link_token = data.link_token;
+      } else {
+        console.warn("Failed to fetch link_token from session, falling back to localStorage.");
+      }
+    } catch (e) {
+      console.error("Error fetching link_token from session:", e);
+      console.warn("Falling back to localStorage for link_token.");
+    }
+
+    if (!link_token) {
+      link_token = localStorage.getItem('plaid_link_token');
+    }
+
+    console.log("oauth-return link_token prefix:", (link_token || '').slice(0, 18));
+
+    if (!link_token) {
+      console.error("No link_token found to resume Plaid Link.");
+      // Optionally, display an error message to the user or redirect to an error page
+      return;
+    }
 
     const handler = Plaid.create({
       token: link_token,                    // must be the ORIGINAL token
@@ -14,7 +36,7 @@
         console.log("Link onSuccess (oauth-return)", md);
         console.log("public_token:", public_token);
         console.log("metadata:", md);
-        await fetch('/api/exchange_public_token', {
+        const exchange_response = await fetch('/api/exchange_public_token', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
             public_token,
@@ -23,7 +45,12 @@
             institution_id:   md?.institution?.institution_id || null
           })
         });
-        window.location.replace('/plaid');
+        const exchange_data = await exchange_response.json();
+        if (exchange_data.redirect_url) {
+          window.location.replace(exchange_data.redirect_url);
+        } else {
+          window.location.replace('/plaid');
+        }
       },
       onExit: (err, md) => console.warn("Link onExit (oauth-return)", err, md),
       onEvent: (ev, md) => console.log("Link onEvent (oauth-return)", ev, md),

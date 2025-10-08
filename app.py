@@ -2880,17 +2880,14 @@ def current_link_token():
         return jsonify({'error': 'no token in session'}), 404
     return jsonify({'link_token': t})
 
-@app.route("/plaid/oauth-return")
+@app.route("/oauth-return")
 def plaid_oauth_return():
-    app.logger.warning(">> HIT /plaid/oauth-return  href=%s", request.url)
+    app.logger.warning(">> HIT /oauth-return  href=%s", request.url)
     # do NOT create a new link token here
     link_token = session.get('link_token') or request.args.get('lt')
-    return render_template("plaid_oauth_return.html", link_token=link_token)
+    return render_template("oauth-return.html", link_token=link_token)
 
-@app.route('/plaid_link_completion')
-def plaid_link_completion():
-    flash('Bank account linked successfully!', 'success')
-    return redirect(url_for('plaid_page'))
+
 
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
@@ -3031,7 +3028,7 @@ def _exchange_public_token(public_token, institution_name, institution_id, clien
         # Also sync accounts right away
         sync_plaid_accounts(new_item.id)
 
-        return new_item, None
+        return new_item, None, 'Bank account linked successfully!'
     except plaid.exceptions.ApiException as e:
         logging.error(f"Plaid API exception during token exchange: {e}")
         return None, {'error': 'Plaid API error'}
@@ -3059,12 +3056,14 @@ def exchange_public_token():
     institution_name = body.get('institution_name')
     institution_id = body.get('institution_id')
 
-    new_item, error = _exchange_public_token(public_token, institution_name, institution_id, client_id)
+    new_item, error, success_message = _exchange_public_token(public_token, institution_name, institution_id, client_id)
     if error:
         return jsonify(error), 500
     if not new_item:
         return jsonify({'error': f'This institution ({institution_name}) is already linked.'}), 409
-    return jsonify({'status': 'success'})
+    
+    flash(success_message, 'success')
+    return jsonify({'status': 'success', 'redirect_url': url_for('plaid_page')})
 
 @app.route('/api/plaid_webhook', methods=['POST'])
 def plaid_webhook():
@@ -3385,6 +3384,18 @@ def delete_institution():
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'error': 'An error occurred while deleting the institution.'}), 500
+
+@app.route('/api/plaid/debug_link_token', methods=['POST'])
+def debug_link_token():
+    link_token = request.json['link_token']
+    try:
+        response = plaid_client.link_token_get(LinkTokenGetRequest(link_token=link_token))
+        return jsonify(response.to_dict())
+    except plaid.exceptions.ApiException as e:
+        return jsonify(json.loads(e.body)), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in debug_link_token: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 def json_serial_for_cli(obj):
