@@ -134,12 +134,13 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('plaid_link_token', link_token); // save it
         console.log('Link token received:', link_token);
 
+        console.log('Initializing Plaid.create with link_token:', link_token);
         const handler = Plaid.create({
             token: link_token,
             onSuccess: async (public_token, metadata) => {
                 console.log('Plaid Link onSuccess callback fired.');
-                console.log('public_token:', public_token);
-                console.log('metadata:', metadata);
+                console.log('onSuccess - public_token:', public_token);
+                console.log('onSuccess - metadata:', metadata);
                 const response = await fetch('/api/exchange_public_token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -150,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         institution_id: metadata.institution.institution_id
                     }),
                 });
+                console.log('Response from /api/exchange_public_token:', response);
 
                 if (response.ok) {
                     location.reload();
@@ -161,10 +163,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             },
             onEvent: (ev, md) => {
-              if (ev === 'ERROR' || ev === 'HANDOFF') console.log('Link event', ev, md);
+              console.log('Plaid Link onEvent:', ev, md);
             },
             onExit: (err, md) => {
-                console.warn('Link exit', err, md);
+                console.warn('Plaid Link onExit:', err, md);
                 if (md?.status === 'requires_oauth') {
                     alert('To finish adding your account, please log in to your bank when prompted. Would you like to try again?');
                     // Optionally, you could add logic here to show a retry button

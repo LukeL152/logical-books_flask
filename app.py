@@ -2882,9 +2882,9 @@ def current_link_token():
 
 @app.route("/oauth-return")
 def plaid_oauth_return():
-    app.logger.warning(">> HIT /oauth-return  href=%s", request.url)
-    # do NOT create a new link token here
+    app.logger.info(f"plaid_oauth_return: Incoming request URL: {request.url}")
     link_token = session.get('link_token') or request.args.get('lt')
+    app.logger.info(f"plaid_oauth_return: Using link_token: {link_token[:10]}...")
     return render_template("oauth-return.html", link_token=link_token)
 
 
@@ -2892,7 +2892,7 @@ def plaid_oauth_return():
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     try:
-        app.logger.info(f"Using redirect_uri: {os.environ.get('PLAID_REDIRECT_URI')}")
+        app.logger.info(f"create_link_token: client_id={session['client_id']}, redirect_uri={os.environ.get('PLAID_REDIRECT_URI')}")
         request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(session['client_id'])
@@ -2906,6 +2906,7 @@ def create_link_token():
         response = plaid_client.link_token_create(request)
         link_token = response['link_token']
         session['link_token'] = link_token # Store link_token in session
+        app.logger.info(f"create_link_token: Generated link_token={link_token}")
         db.session.add(PendingPlaidLink(link_token=link_token, client_id=session['client_id'], purpose='standard'))
         db.session.commit()
         return jsonify(response.to_dict())
@@ -3001,19 +3002,19 @@ def create_link_token_for_update():
         return jsonify(json.loads(e.body)), 500
 
 def _exchange_public_token(public_token, institution_name, institution_id, client_id):
+    app.logger.info(f"_exchange_public_token: public_token={public_token[:10]}..., institution_name={institution_name}, institution_id={institution_id}, client_id={client_id}")
     try:
         exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
         exchange_response = plaid_client.item_public_token_exchange(exchange_request)
         access_token = exchange_response['access_token']
         item_id = exchange_response['item_id']
+        app.logger.info(f"_exchange_public_token: Received access_token={access_token[:10]}..., item_id={item_id}")
 
         # Check if this item already exists for this client
         existing_item = PlaidItem.query.filter_by(item_id=item_id, client_id=client_id).first()
         if existing_item:
-            # This can happen in a webhook scenario if the user goes through the flow multiple times.
-            # It's safe to just ignore it.
-            logging.info(f'Item {item_id} already exists for client {client_id}. Ignoring.')
-            return None, None # Indicate that no new item was created
+            app.logger.info(f'_exchange_public_token: Item {item_id} already exists for client {client_id}. Ignoring.')
+            return None, None, 'This institution is already linked.' # Indicate that no new item was created
 
         new_item = PlaidItem(
             client_id=client_id,
@@ -3030,14 +3031,15 @@ def _exchange_public_token(public_token, institution_name, institution_id, clien
 
         return new_item, None, 'Bank account linked successfully!'
     except plaid.exceptions.ApiException as e:
-        logging.error(f"Plaid API exception during token exchange: {e}")
-        return None, {'error': 'Plaid API error'}
+        app.logger.error(f"_exchange_public_token: Plaid API exception during token exchange: {e.body}")
+        return None, {'error': 'Plaid API error'}, None
 
 @app.route('/api/exchange_public_token', methods=['POST'])
 def exchange_public_token():
     body = request.get_json() or {}
     public_token = body.get('public_token')
     link_token   = body.get('link_token')
+    app.logger.info(f"exchange_public_token: Received public_token={public_token[:10]}..., link_token={link_token[:10]}...")
 
     client_id = None
     if link_token:
@@ -3046,11 +3048,14 @@ def exchange_public_token():
             client_id = pending.client_id
             db.session.delete(pending)
             db.session.commit()
+            app.logger.info(f"exchange_public_token: Resolved client_id={client_id} from pending link_token.")
 
     if client_id is None:
         client_id = session.get('client_id')  # last resort
+        app.logger.info(f"exchange_public_token: Resolved client_id={client_id} from session (last resort).")
 
     if not client_id:
+        app.logger.error("exchange_public_token: Could not resolve client for this Link session.")
         return jsonify({'error': 'Could not resolve client for this Link session.'}), 400
 
     institution_name = body.get('institution_name')
@@ -3058,11 +3063,14 @@ def exchange_public_token():
 
     new_item, error, success_message = _exchange_public_token(public_token, institution_name, institution_id, client_id)
     if error:
+        app.logger.error(f"exchange_public_token: Error during public token exchange: {error}")
         return jsonify(error), 500
     if not new_item:
+        app.logger.warning(f"exchange_public_token: Institution {institution_name} already linked or no new item created.")
         return jsonify({'error': f'This institution ({institution_name}) is already linked.'}), 409
     
     flash(success_message, 'success')
+    app.logger.info(f"exchange_public_token: Successfully exchanged public token for client_id={client_id}. Redirecting to /plaid.")
     return jsonify({'status': 'success', 'redirect_url': url_for('plaid_page')})
 
 @app.route('/api/plaid_webhook', methods=['POST'])
