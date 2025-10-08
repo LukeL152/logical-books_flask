@@ -21,11 +21,14 @@
       link_token = localStorage.getItem('plaid_link_token');
     }
 
-    console.log("oauth-return link_token prefix:", (link_token || '').slice(0, 18));
+    console.log("oauth-return link_token after retrieval attempts:", (link_token || '').slice(0, 18));
+    console.log("oauth-return receivedRedirectUri:", window.location.href);
 
     if (!link_token) {
       console.error("No link_token found to resume Plaid Link.");
-      // Optionally, display an error message to the user or redirect to an error page
+      alert("Failed to resume Plaid Link. Please try linking your account again.");
+      // Optionally, redirect to the plaid_page or an error page
+      window.location.replace('/plaid');
       return;
     }
 
@@ -34,8 +37,8 @@
       receivedRedirectUri: window.location.href,  // REQUIRED for OAuth resume
       onSuccess: async (public_token, md) => {
         console.log("Link onSuccess (oauth-return)", md);
-        console.log("public_token:", public_token);
-        console.log("metadata:", md);
+        console.log("onSuccess - public_token:", public_token);
+        console.log("onSuccess - metadata:", md);
         const exchange_response = await fetch('/api/exchange_public_token', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({
@@ -45,6 +48,7 @@
             institution_id:   md?.institution?.institution_id || null
           })
         });
+        console.log('Response from /api/exchange_public_token:', exchange_response);
         const exchange_data = await exchange_response.json();
         if (exchange_data.redirect_url) {
           window.location.replace(exchange_data.redirect_url);
@@ -52,7 +56,16 @@
           window.location.replace('/plaid');
         }
       },
-      onExit: (err, md) => console.warn("Link onExit (oauth-return)", err, md),
+      onExit: (err, md) => {
+        console.warn("Link onExit (oauth-return)", err, md);
+        if (md?.status === 'requires_oauth') {
+            alert('To finish adding your account, please log in to your bank when prompted. Would you like to try again?');
+        } else if (err) {
+            alert(`Plaid Link exited with an error: ${err.display_message || err.error_message || err.error_code}`);
+        }
+        // Optionally, redirect to the plaid_page or provide a retry button
+        window.location.replace('/plaid');
+      },
       onEvent: (ev, md) => console.log("Link onEvent (oauth-return)", ev, md),
     });
     handler.open();
