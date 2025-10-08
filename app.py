@@ -817,7 +817,7 @@ def normalize_date(date_str):
 
 @app.before_request
 def before_request():
-    if 'client_id' not in session and request.endpoint not in ['clients', 'add_client', 'select_client', 'edit_client', 'delete_client', 'plaid_webhook']:
+    if 'client_id' not in session and request.endpoint not in ['clients', 'add_client', 'select_client', 'edit_client', 'delete_client', 'plaid_webhook', 'debug_link_token', 'plaid_oauth_return']:
         return redirect(url_for('clients'))
 
 @app.route('/clients')
