@@ -163,7 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
             onEvent: (ev, md) => {
               if (ev === 'ERROR' || ev === 'HANDOFF') console.log('Link event', ev, md);
             },
-            onExit: (err, md) => console.warn('Link exit', err, md),
+            onExit: (err, md) => {
+                console.warn('Link exit', err, md);
+                if (md?.status === 'requires_oauth') {
+                    alert('To finish adding your account, please log in to your bank when prompted. Would you like to try again?');
+                    // Optionally, you could add logic here to show a retry button
+                }
+            },
         });
         handler.open();
     });
