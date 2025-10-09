@@ -2911,27 +2911,29 @@ def plaid_oauth_return():
 @app.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     try:
-        app.logger.info(f"create_link_token: client_id={session['client_id']}, redirect_uri={os.environ.get('PLAID_REDIRECT_URI')}")
-        request = LinkTokenCreateRequest(
-            user=LinkTokenCreateRequestUser(
-                client_user_id=str(session['client_id'])
-            ),
+        client_id = session['client_id']  # will 400/KeyError if missing; fine since /plaid protects it
+        redirect_uri = os.environ.get('PLAID_REDIRECT_URI')
+        app.logger.info(f"create_link_token: client_id={client_id}, redirect_uri={redirect_uri}")
+
+        req = LinkTokenCreateRequest(
+            user=LinkTokenCreateRequestUser(client_user_id=str(client_id)),
             client_name="My App",
             products=[Products(p) for p in PLAID_PRODUCTS],
             country_codes=[CountryCode(c) for c in PLAID_COUNTRY_CODES],
             language='en',
-<<<<<<< HEAD
-=======
-            redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),
->>>>>>> feature/plaid-integration-chase
+            redirect_uri=redirect_uri,   # <<< keep this for OAuth inst’ns
         )
-        response = plaid_client.link_token_create(request)
-        link_token = response['link_token']
-        session['link_token'] = link_token # Store link_token in session
-        app.logger.info(f"create_link_token: Generated link_token={link_token}")
-        db.session.add(PendingPlaidLink(link_token=link_token, client_id=session['client_id'], purpose='standard'))
+        resp = plaid_client.link_token_create(req)
+        link_token = resp['link_token']
+
+        # save for OAuth resume + client identification
+        db.session.add(PendingPlaidLink(link_token=link_token, client_id=client_id, purpose='standard'))
         db.session.commit()
-        return jsonify(response.to_dict())
+
+        # optional convenience for same-tab resume
+        session['link_token'] = link_token
+        app.logger.info(f"create_link_token: link_token={link_token[:24]}…")
+        return jsonify(resp.to_dict())
     except plaid.exceptions.ApiException as e:
         return jsonify(json.loads(e.body)), 500
     except Exception as e:
@@ -3263,65 +3265,51 @@ def sync_plaid_accounts(plaid_item_id=None):
             plaid_items = [PlaidItem.query.get(plaid_item_id)]
         else:
             plaid_items = PlaidItem.query.filter_by(client_id=session['client_id']).all()
-        
-        for item in plaid_items:
-            if not item: # Handle case where plaid_item_id might not exist
-                continue
 
+        for item in plaid_items:
+            if not item:
+                continue
             try:
                 accounts_request = AccountsGetRequest(access_token=item.access_token)
                 accounts_response = plaid_client.accounts_get(accounts_request)
                 accounts = accounts_response['accounts']
                 app.logger.info(f'Found {len(accounts)} accounts for item {item.id}')
-<<<<<<< HEAD
 
-                for account in accounts:
-                    # Check if the account already exists
-                    if not PlaidAccount.query.filter_by(account_id=account['account_id']).first():
-=======
-                
                 valid_plaid_account_ids = {acc['account_id'] for acc in accounts}
                 local_plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=item.id).all()
                 local_plaid_account_ids = {acc.account_id for acc in local_plaid_accounts}
 
                 added_count = 0
                 for account in accounts:
-                    # Check if the account already exists
                     if account['account_id'] not in local_plaid_account_ids:
->>>>>>> feature/plaid-integration-chase
                         app.logger.info(f'Adding account {account["account_id"]} to the database')
                         new_plaid_account = PlaidAccount(
                             plaid_item_id=item.id,
                             account_id=account['account_id'],
                             name=account['name'],
                             mask=account['mask'],
-<<<<<<< HEAD
-                            type=str(account['type']),
-                            subtype=str(account['subtype'])
-                        )
-                        db.session.add(new_plaid_account)
-                db.session.commit()
-=======
-                            type=account['type'].value,
-                            subtype=account['subtype'].value
+                            # enums in Plaid SDK
+                            type=(account['type'].value
+                                  if hasattr(account['type'], 'value') else str(account['type'])),
+                            subtype=(account['subtype'].value
+                                     if hasattr(account['subtype'], 'value') else str(account['subtype'])),
                         )
                         db.session.add(new_plaid_account)
                         added_count += 1
-                
+
                 deleted_count = 0
-                # Delete old accounts
                 for local_acc in local_plaid_accounts:
                     if local_acc.account_id not in valid_plaid_account_ids:
                         db.session.delete(local_acc)
                         deleted_count += 1
 
                 db.session.commit()
-                app.logger.info(f"Sync complete for item {item.id}. Added: {added_count}, Deleted: {deleted_count}")
-
->>>>>>> feature/plaid-integration-chase
+                app.logger.info(
+                    f"Sync complete for item {item.id}. Added: {added_count}, Deleted: {deleted_count}"
+                )
             except plaid.exceptions.ApiException as e:
                 app.logger.error(f"Error syncing accounts for item {item.id}: {e}")
-
+                
 @app.route('/api/plaid/fetch_transactions', methods=['POST'])
 def fetch_transactions():
     plaid_item_id = request.json.get('plaid_item_id')
@@ -3453,25 +3441,7 @@ def debug_link_token():
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@app.route('/api/plaid/delete_institution', methods=['POST'])
-def delete_institution():
-    institution_id = request.json['institution_id']
-    item = PlaidItem.query.get_or_404(institution_id)
-    if item.client_id != session['client_id']:
-        return "Unauthorized", 403
 
-    try:
-        # Remove the item from Plaid
-        remove_request = ItemRemoveRequest(access_token=item.access_token)
-        plaid_client.item_remove(remove_request)
-
-        # Remove the item from the database
-        db.session.delete(item)
-        db.session.commit()
-
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'error': str(e)})
 
 def json_serial_for_cli(obj):
     """JSON serializer for objects not serializable by default json code"""
