@@ -1,0 +1,90 @@
+<h1>✅ You are on /plaid/oauth-return</h1>
+<script>
+// Force top-level (prevents iframe oddities)
+if (window.top !== window.self) {
+  window.top.location = window.location.href;
+}
+</script>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+  (async () => {
+    console.log("[oauth-return] href:", window.location.href);
+
+    // 1) Retrieve the original link_token (session → localStorage fallback)
+    let link_token = null;
+    try {
+      const resp = await fetch('/api/current_link_token', { credentials: 'same-origin' });
+      if (resp.ok) {
+        const data = await resp.json();
+        link_token = data.link_token;
+        console.log("[oauth-return] link_token from session:", (link_token || '').slice(0, 18));
+      } else {
+        console.warn("[oauth-return] no token in session; falling back to localStorage");
+      }
+    } catch (e) {
+      console.warn("[oauth-return] error calling /api/current_link_token:", e);
+    }
+    if (!link_token) {
+      link_token = localStorage.getItem('plaid_link_token');
+      console.log("[oauth-return] link_token from localStorage:", (link_token || '').slice(0, 18));
+    }
+
+    // Guard: must have the original token
+    if (!link_token) {
+      console.error("[oauth-return] No link_token available to resume Plaid Link");
+      alert("Could not resume bank connection. Please try again.");
+      window.location.replace('/plaid');
+      return;
+    }
+
+    // 2) Resume OAuth
+    const handler = Plaid.create({
+      token: link_token,
+      receivedRedirectUri: window.location.href,
+      onSuccess: async (public_token, md) => {
+        try {
+          const r = await fetch('/api/exchange_public_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              public_token,
+              link_token,
+              institution_name: md?.institution?.name || null,
+              institution_id: md?.institution?.institution_id || null
+            }),
+            credentials: 'same-origin'
+          });
+
+          const body = await r.json().catch(() => ({}));
+          console.log("[oauth-return] exchange response:", r.status, body);
+
+          // Clear the stored token on success
+          if (r.ok) localStorage.removeItem('plaid_link_token');
+
+          // Prefer server-provided redirect
+          if (body?.redirect_url) {
+            window.location.replace(body.redirect_url);
+          } else {
+            window.location.replace('/plaid');
+          }
+        } catch (ex) {
+          console.error("[oauth-return] exchange_public_token threw:", ex);
+          alert("Linked, but finalization failed. Please refresh your accounts page.");
+          window.location.replace('/plaid');
+        }
+      },
+      onExit: (err, md) => {
+        console.warn("[oauth-return] Link onExit", err, md);
+        if (md?.status === 'requires_oauth') {
+          alert('To finish adding your account, you’ll need to log in when prompted. Try again?');
+        } else if (err) {
+          alert(`Plaid exited: ${err.display_message || err.error_message || err.error_code || 'Unknown error'}`);
+        }
+        window.location.replace('/plaid');
+      },
+      onEvent: (ev, md) => console.log("[oauth-return] onEvent", ev, md),
+    });
+
+    handler.open();
+  })();
+</script>

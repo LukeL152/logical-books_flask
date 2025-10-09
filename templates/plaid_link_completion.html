@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="title">Completing Bank Integration...</h1>
+
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const handler = Plaid.create({
+        token: '{{ link_token }}',
+        receivedRedirectUri: window.location.href,
+        onSuccess: async (public_token, metadata) => {
+            const response = await fetch('/api/exchange_public_token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    public_token: public_token,
+                    institution_name: metadata.institution.name,
+                    institution_id: metadata.institution.institution_id
+                }),
+            });
+
+            if (response.ok) {
+                window.location.href = '{{ url_for("plaid_page") }}';
+            } else if (response.status === 409) {
+                const result = await response.json();
+                alert(result.error);
+                window.location.href = '{{ url_for("plaid_page") }}';
+            } else {
+                alert('An unexpected error occurred.');
+                window.location.href = '{{ url_for("plaid_page") }}';
+            }
+        },
+        onExit: (err, metadata) => {
+            console.log('onExit', err, metadata);
+            // The user exited the Link flow.
+            if (err != null) {
+                // The user encountered a Plaid error prior to exiting.
+                console.error(err);
+            }
+            // metadata contains information about the institution
+            // that the user selected and the most recent API request IDs.
+            // Storing this information can be helpful for support.
+            window.location.href = '{{ url_for("plaid_page") }}';
+        },
+    });
+    handler.open();
+});
+</script>
+{% endblock %}
