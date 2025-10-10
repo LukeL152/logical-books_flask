@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Reconciliation{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Reconcile Account: {{ account.name }}</h1>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('accounts.reconcile_account', account_id=account.id) }}">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="statement_date" class="form-label">Statement Date</label>
+                    <input type="date" class="form-control" id="statement_date" name="statement_date" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="statement_balance" class="form-label">Statement Ending Balance</label>
+                    <input type="number" step="0.01" class="form-control" id="statement_balance" name="statement_balance" required>
+                </div>
+            </div>
+
+            <h3 class="mt-5">Transactions</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                    <tr>
+                        <td><input type="checkbox" name="journal_entry_ids" value="{{ entry.id }}"></td>
+                        <td>{{ entry.date }}</td>
+                        <td>{{ entry.description }}</td>
+                        <td class="text-end">{% if entry.debit_account_id == account.id %}{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
+                        <td class="text-end">{% if entry.credit_account_id == account.id %}{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="mt-4">
+                <h4>Reconciliation Summary</h4>
+                <p>Cleared Balance: <span id="cleared-balance">0.00</span></p>
+                <p>Statement Balance: <span id="statement-balance-display">0.00</span></p>
+                <p><strong>Difference: <span id="difference">0.00</span></strong></p>
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-3">Save Reconciliation</button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const statementBalanceInput = document.getElementById('statement_balance');
+    const statementBalanceDisplay = document.getElementById('statement-balance-display');
+    const clearedBalanceDisplay = document.getElementById('cleared-balance');
+    const differenceDisplay = document.getElementById('difference');
+    const checkboxes = document.querySelectorAll('input[name="journal_entry_ids"]');
+    const accountId = {{ account.id }};
+    const openingBalance = parseFloat("{{ account.opening_balance }}") || 0;
+
+    function updateSummary() {
+        let clearedBalance = 0;
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                const row = checkbox.closest('tr');
+                const debitText = row.cells[3].textContent.trim();
+                const creditText = row.cells[4].textContent.trim();
+                
+                if (debitText) {
+                    clearedBalance += parseFloat(debitText);
+                }
+                if (creditText) {
+                    clearedBalance -= parseFloat(creditText);
+                }
+            }
+        });
+
+        const statementBalance = parseFloat(statementBalanceInput.value) || 0;
+        // The cleared balance starts with the opening balance of the account
+        const totalCleared = openingBalance + clearedBalance;
+        const difference = totalCleared - statementBalance;
+
+        clearedBalanceDisplay.textContent = totalCleared.toFixed(2);
+        statementBalanceDisplay.textContent = statementBalance.toFixed(2);
+        differenceDisplay.textContent = difference.toFixed(2);
+
+        // Change color based on difference
+        if (difference.toFixed(2) == 0.00) {
+            differenceDisplay.parentElement.classList.remove('text-danger');
+            differenceDisplay.parentElement.classList.add('text-success');
+        } else {
+            differenceDisplay.parentElement.classList.remove('text-success');
+            differenceDisplay.parentElement.classList.add('text-danger');
+        }
+    }
+
+    statementBalanceInput.addEventListener('input', updateSummary);
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateSummary);
+    });
+
+    // Initial calculation
+    updateSummary();
+});
+</script>
+{% endblock %}

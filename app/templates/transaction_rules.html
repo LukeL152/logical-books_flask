@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Transaction Rules</h1>
+    <a href="{{ url_for('transactions.add_transaction_rule') }}" class="btn btn-primary">Add New Rule</a>
+</div>
+
+{% for source_account, rules in rules_by_source.items() %}
+    <h2 class="mt-4">{{ source_account }}</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Conditions</th>
+                <th>Actions</th>
+                <th style="width: 15%;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rule in rules %}
+            <tr>
+                <td>
+                    {% if rule.keyword %}
+                        <div><strong>Keyword:</strong> {{ rule.keyword }}</div>
+                    {% endif %}
+                    {% if rule.category_condition %}
+                        <div><strong>Category:</strong> {{ rule.category_condition }}</div>
+                    {% endif %}
+                    {% if rule.min_amount is not none %}
+                        <div><strong>Min Amount:</strong> {{ rule.min_amount }}</div>
+                    {% endif %}
+                    {% if rule.max_amount is not none %}
+                        <div><strong>Max Amount:</strong> {{ rule.max_amount }}</div>
+                    {% endif %}
+                    {% if rule.transaction_type %}
+                        <div><strong>Type:</strong> {{ rule.transaction_type }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if rule.new_category %}
+                        <div><strong>Set Category:</strong> {{ rule.new_category }}</div>
+                    {% endif %}
+                    {% if rule.new_description %}
+                        <div><strong>Set Description:</strong> {{ rule.new_description }}</div>
+                    {% endif %}
+                    {% if rule.new_debit_account %}
+                        <div><strong>Set Debit Account:</strong> {{ rule.new_debit_account.name }}</div>
+                    {% endif %}
+                    {% if rule.new_credit_account %}
+                        <div><strong>Set Credit Account:</strong> {{ rule.new_credit_account.name }}</div>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    <a href="{{ url_for('transactions.edit_transaction_rule', rule_id=rule.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('transactions.delete_transaction_rule', rule_id=rule.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this rule?')">Delete</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No transaction rules found.</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% from '_macros.html' import render_account_options %}
+
+{% block content %}
+<h1 class="mb-4">Chart of Accounts</h1>
+
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th style="width: 40%;">Account Name</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for account in accounts_data %}
+            <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id or '' }}" style="display: {{ '' if account.parent_id is none else 'none' }};">
+                <td>
+                    <span style="padding-left: {{ account.level * 25 }}px;">
+                        {% if account.is_parent %}
+                            <i class="bi bi-chevron-right expand-icon" style="cursor: pointer;"></i>
+                        {% else %}
+                            <i class="bi bi-dot" style="margin-left: 1.25rem;"></i>
+                        {% endif %}
+                        {{ account.name }}
+                    </span>
+                </td>
+                <td>{{ account.type }}</td>
+                <td>{{ account.category }}</td>
+                <td>
+                    <a href="{{ url_for('accounts.edit_account', account_id=account.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('accounts.delete_account', account_id=account.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2 class="mt-4">Add New Account</h2>
+<form method="POST" action="{{ url_for('accounts.add_account') }}" class="row g-3">
+    <div class="col-md-4">
+        <label for="name" class="form-label">Account Name</label>
+        <input type="text" id="name" name="name" class="form-control" required>
+    </div>
+    <div class="col-md-4">
+        <label for="parent_id" class="form-label">Parent Account</label>
+        <select id="parent_id" name="parent_id" class="form-select">
+            <option value="None" selected>None (Top-Level Account)</option>
+            {{ render_account_options(account_choices) }}
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label for="type" class="form-label">Account Type</label>
+        <select id="type" name="type" class="form-select" required>
+            <option value="Asset">Asset</option>
+            <option value="Liability">Liability</option>
+            <option value="Equity">Equity</option>
+            <option value="Revenue">Revenue</option>
+            <option value="Expense">Expense</option>
+            <option value="Accounts Receivable">Accounts Receivable</option>
+            <option value="Accounts Payable">Accounts Payable</option>
+            <option value="Inventory">Inventory</option>
+            <option value="Fixed Asset">Fixed Asset</option>
+            <option value="Accumulated Depreciation">Accumulated Depreciation</option>
+            <option value="Long-Term Debt">Long-Term Debt</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label for="category" class="form-label">Category</label>
+        <input type="text" id="category" name="category" class="form-control">
+    </div>
+    <div class="col-md-4">
+        <label for="opening_balance" class="form-label">Opening Balance</label>
+        <input type="number" step="0.01" id="opening_balance" name="opening_balance" class="form-control" value="0.00" required>
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Add Account</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('.table');
+
+    table.addEventListener('click', function(e) {
+        if (e.target.classList.contains('expand-icon')) {
+            const row = e.target.closest('tr');
+            const accountId = row.dataset.id;
+            const isExpanded = e.target.classList.contains('bi-chevron-down');
+
+            e.target.classList.toggle('bi-chevron-down', !isExpanded);
+            e.target.classList.toggle('bi-chevron-right', isExpanded);
+
+            const allRows = Array.from(table.querySelectorAll('tbody tr'));
+            
+            function toggleChildren(parentId, show) {
+                const children = allRows.filter(r => r.dataset.parentId === parentId);
+                children.forEach(child => {
+                    child.style.display = show ? '' : 'none';
+                    if (!show) {
+                        // when hiding, also hide grandchildren
+                        const childId = child.dataset.id;
+                        toggleChildren(childId, false);
+                        // and reset their icon
+                        const childIcon = child.querySelector('.expand-icon');
+                        if (childIcon) {
+                            childIcon.classList.remove('bi-chevron-down');
+                            childIcon.classList.add('bi-chevron-right');
+                        }
+                    }
+                });
+            }
+
+            toggleChildren(accountId, !isExpanded);
+        }
+    });
+
+    // Initialize select2 for the form
+    $('#parent_id').select2();
+});
+</script>
+{% endblock %}

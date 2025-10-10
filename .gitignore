@@ -23,6 +23,8 @@ instance/
 GEMINI.md
 .gemini/
 /backups
+
+#Environment files
 .env
 
 gha-creds-*.json

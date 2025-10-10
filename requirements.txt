@@ -13,6 +13,7 @@ Werkzeug==3.0.1
 zipp==3.17.0
 python-dotenv
 plaid-python
+PyJWT
 markdown
 PyJWT
 Flask-Talisman

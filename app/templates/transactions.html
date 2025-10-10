@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="mb-4">Transactions</h1>
+
+    <form action="{{ url_for('transactions.delete_transactions') }}" method="post" id="transactions-form">
+    <a href="{{ url_for('transactions.add_transaction') }}" class="btn btn-primary mb-3">Add New Transaction</a>
+    <a href="{{ url_for('transactions.cleanup_orphaned_transactions') }}" class="btn btn-warning mb-3">Cleanup Orphaned Transactions</a>
+    <button type="submit" class="btn btn-danger mb-3">Delete Selected</button>
+
+    <table class="table table-striped" id="transactions-table">
+        <thead>
+            <tr>
+                <th><input type="checkbox" id="select-all"></th>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Source Account</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for transaction in transactions %}
+            <tr>
+                <td><input type="checkbox" name="transaction_ids" value="{{ transaction.id }}" class="transaction-checkbox"></td>
+                <td>{{ transaction.date }}</td>
+                <td>{{ transaction.description }}</td>
+                <td>{{ "%.2f"|format(transaction.amount) }}</td>
+                <td>{{ transaction.category }}</td>
+                <td>{{ transaction.source_account.name if transaction.source_account else '' }}</td>
+                <td>
+                    <a href="{{ url_for('transactions.edit_transaction', transaction_id=transaction.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('transactions.delete_transaction', transaction_id=transaction.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this transaction?')">Delete</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#transactions-table').DataTable();
+
+    document.getElementById('select-all').addEventListener('click', function(event) {
+        const checkboxes = document.querySelectorAll('.transaction-checkbox');
+        for (const checkbox of checkboxes) {
+            checkbox.checked = event.target.checked;
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from '_macros.html' import render_account_options %}
+
+{% block content %}
+    <h1 class="mb-4">Import Journal Entries</h1>
+
+    <!-- Import Form -->
+    <form action="{{ url_for('transactions.import_csv') }}" method="post" enctype="multipart/form-data" class="mb-4 p-3 border rounded">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label for="account" class="form-label">Account</label>
+                <select id="account" name="account" class="form-select" required>
+                    {{ render_account_options(accounts) }}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="csv_files" class="form-label">CSV File(s)</label>
+                <input type="file" id="csv_files" name="csv_files" class="form-control" multiple required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Import</button>
+            </div>
+        </div>
+    </form>
+
+    <hr>
+
+    <h2 class="mb-3">Manage Import Templates</h2>
+    <!-- Template Management Table -->
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Account</th>
+                <th>Template Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for account_id, account_name, level in accounts %}
+            {% set account = account_map[account_id] %}
+            <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id }}" class="account-row {% if level > 0 %}child-row-{{ account.parent_id }}{% endif %}">
+                <td style="padding-left: {{ level * 25 }}px;">
+                    {% if account.children.count() > 0 %}
+                        <i class="bi bi-chevron-down toggle-children" style="cursor: pointer;"></i>
+                    {% endif %}
+                    {{ account_name }}
+                </td>
+                <td>
+                    {% set template = account_map[account_id].import_template %}
+                    {% if template %}
+                        <span class="badge bg-success">Template Exists</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">No Template</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if template %}
+                        <a href="{{ url_for('transactions.edit_template', template_id=template.id) }}" class="btn btn-sm btn-primary">Edit Template</a>
+                        <a href="{{ url_for('transactions.delete_template', template_id=template.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this template?')">Delete</a>
+                    {% else %}
+                        <a href="{{ url_for('transactions.add_template_for_account', account_id=account_id) }}" class="btn btn-sm btn-success">Create Template</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.toggle-children').forEach(item => {
+        item.addEventListener('click', event => {
+            const accountId = item.closest('tr').dataset.id;
+            const children = document.querySelectorAll(`.child-row-${accountId}`);
+            children.forEach(child => {
+                child.classList.toggle('d-none');
+            });
+            item.classList.toggle('bi-chevron-down');
+            item.classList.toggle('bi-chevron-right');
+        });
+    });
+});
+</script>
+{% endblock %}

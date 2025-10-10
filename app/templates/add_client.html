@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}Add Client - Logical Books{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Add New Client</h2>
+    <hr>
+    <form method="POST" action="{{ url_for('clients.add_client') }}">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="business_name" class="form-label">Business Name</label>
+                    <input type="text" class="form-control" id="business_name" name="business_name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="contact_name" class="form-label">Contact Name</label>
+                    <input type="text" class="form-control" id="contact_name" name="contact_name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="contact_email" class="form-label">Contact Email</label>
+                    <input type="email" class="form-control" id="contact_email" name="contact_email">
+                </div>
+                <div class="mb-3">
+                    <label for="contact_phone" class="form-label">Contact Phone</label>
+                    <input type="tel" class="form-control" id="contact_phone" name="contact_phone">
+                </div>
+                <div class="mb-3">
+                    <label for="address" class="form-label">Address</label>
+                    <textarea class="form-control" id="address" name="address" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label for="entity_structure" class="form-label">Entity Structure</label>
+                    <input type="text" class="form-control" id="entity_structure" name="entity_structure">
+                </div>
+                <div class="mb-3">
+                    <label for="billing_cycle" class="form-label">Billing Cycle</label>
+                    <input type="text" class="form-control" id="billing_cycle" name="billing_cycle">
+                </div>
+                <div class="mb-3">
+                    <label for="payment_method" class="form-label">Payment Method</label>
+                    <input type="text" class="form-control" id="payment_method" name="payment_method">
+                </div>
+                <div class="mb-3">
+                    <label for="client_status" class="form-label">Client Status</label>
+                    <select class="form-select" id="client_status" name="client_status">
+                        <option value="Active" selected>Active</option>
+                        <option value="Inactive">Inactive</option>
+                        <option value="Prospect">Prospect</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="mb-3">
+                    <label for="services_offered" class="form-label">Services Offered</label>
+                    <textarea class="form-control" id="services_offered" name="services_offered" rows="3"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                </div>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Client</button>
+        <a href="{{ url_for('clients.clients') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}
