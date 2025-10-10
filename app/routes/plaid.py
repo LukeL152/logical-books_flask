@@ -105,7 +105,7 @@ def create_link_token():
 
         req = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(client_user_id=str(client_id)),
-            client_name="My App",
+            client_name="Logical Books",
             products=[Products(p) for p in current_app.config['PLAID_PRODUCTS']],
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
@@ -143,7 +143,7 @@ def generate_hosted_link(client_id):
             user=LinkTokenCreateRequestUser(
                 client_user_id=str(client_id)
             ),
-            client_name="My App",
+            client_name="Logical Books",
             products=[Products(p) for p in current_app.config['PLAID_PRODUCTS']],
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
