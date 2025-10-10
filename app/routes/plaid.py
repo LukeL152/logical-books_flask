@@ -67,11 +67,11 @@ def verify_plaid_webhook(request):
 @plaid_bp.route('/plaid')
 def plaid_page():
     if 'client_id' not in session:
-        return redirect(url_for('main.clients'))
+        return redirect(url_for('clients.clients'))
     
     client_id = session.get('client_id')
     if not client_id:
-        return redirect(url_for('main.clients'))
+        return redirect(url_for('clients.clients'))
 
     client = Client.query.get(client_id)
     plaid_items = PlaidItem.query.filter_by(client_id=client_id).all()

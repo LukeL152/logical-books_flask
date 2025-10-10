@@ -8,4 +8,4 @@ source venv/bin/activate
 # This is intended for live debugging and will stop when you close the terminal.
 # For persistent background service, use the systemd service.
 echo "Starting Gunicorn on 0.0.0.0:8000 with INFO log level..."
-gunicorn --workers 3 --bind 0.0.0.0:8000 --log-level info wsgi:app
+gunicorn --workers 3 --bind 0.0.0.0:8000 --log-level debug wsgi:app
