@@ -19,6 +19,7 @@ from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 import os
 import json
 from datetime import datetime
+import logging
 
 plaid_bp = Blueprint('plaid', __name__)
 
