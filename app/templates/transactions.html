@@ -4,6 +4,7 @@
 
     <form action="{{ url_for('transactions.delete_transactions') }}" method="post" id="transactions-form">
     <a href="{{ url_for('transactions.add_transaction') }}" class="btn btn-primary mb-3">Add New Transaction</a>
+    <a href="{{ url_for('transactions.transaction_analysis_page') }}" class="btn btn-info mb-3">Transaction Analysis</a>
     <a href="{{ url_for('transactions.cleanup_orphaned_transactions') }}" class="btn btn-warning mb-3">Cleanup Orphaned Transactions</a>
     <button type="submit" class="btn btn-danger mb-3">Delete Selected</button>
 
