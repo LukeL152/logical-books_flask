@@ -20,6 +20,7 @@ import os
 import json
 from datetime import datetime
 import logging
+import secrets
 
 plaid_bp = Blueprint('plaid', __name__)
 
@@ -45,7 +46,8 @@ def verify_plaid_webhook(request):
         jwk = response['key']
 
         # Verify the JWT signature
-        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(jwk))
+        algorithm = jwt.get_algorithm_by_name('ES256')
+        public_key = algorithm.from_jwk(json.dumps(jwk))
         decoded_jwt = jwt.decode(jwt_token, public_key, algorithms=['ES256'], options={"verify_aud": False})
 
         # Check the timestamp
@@ -111,8 +113,6 @@ def plaid_oauth_return():
 
     current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token[:10]}...")
     return render_template("oauth-return.html", link_token=link_token)
-
-import secrets
 
 @plaid_bp.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
