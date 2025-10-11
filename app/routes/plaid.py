@@ -95,7 +95,7 @@ def current_link_token():
     if not t:
         current_app.logger.warning("current_link_token: no link_token in session")
         return jsonify({'error': 'no token in session'}), 404
-    current_app.logger.info(f"current_link_token: found link_token: {t[:10]}...")
+    current_app.logger.info(f"current_link_token: found link_token: {t}")
     current_app.logger.info("--- current_link_token: end ---")
     return jsonify({'link_token': t})
 
@@ -107,7 +107,7 @@ def plaid_oauth_return():
     if not link_token:
         current_app.logger.error("plaid_oauth_return: could not find link_token in session or query params")
     else:
-        current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token[:10]}...")
+        current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token}")
     current_app.logger.info("--- plaid_oauth_return: end ---")
     return render_template("oauth-return.html", link_token=link_token)
 
@@ -129,7 +129,7 @@ def create_link_token():
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']
-        current_app.logger.info(f"create_link_token: created link_token: {link_token[:24]}…")
+        current_app.logger.info(f"create_link_token: created link_token: {link_token}")
 
         # save for OAuth resume + client identification
         db.session.add(PendingPlaidLink(link_token=link_token, client_id=client_id, purpose='standard'))
@@ -202,13 +202,13 @@ def create_link_token_for_update():
         return jsonify(json.loads(e.body)), 500
 
 def _exchange_public_token(public_token, institution_name, institution_id, client_id):
-    current_app.logger.info(f"_exchange_public_token: public_token={public_token[:10]}..., institution_name={institution_name}, institution_id={institution_id}, client_id={client_id}")
+    current_app.logger.info(f"_exchange_public_token: public_token={public_token}, institution_name={institution_name}, institution_id={institution_id}, client_id={client_id}")
     try:
         exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
         exchange_response = current_app.plaid_client.item_public_token_exchange(exchange_request)
         access_token = exchange_response['access_token']
         item_id = exchange_response['item_id']
-        current_app.logger.info(f"_exchange_public_token: Received access_token={access_token[:10]}..., item_id={item_id}")
+        current_app.logger.info(f"_exchange_public_token: Received access_token={access_token}, item_id={item_id}")
 
         # Check if this item already exists for this client
         existing_item = PlaidItem.query.filter_by(item_id=item_id, client_id=client_id).first()
@@ -240,7 +240,7 @@ def exchange_public_token():
     body = request.get_json() or {}
     public_token = body.get('public_token')
     link_token   = body.get('link_token')
-    current_app.logger.info(f"exchange_public_token: Received public_token={public_token[:10]}..., link_token={link_token[:10]}...")
+    current_app.logger.info(f"exchange_public_token: Received public_token={public_token}, link_token={link_token}")
 
     client_id = None
     if link_token:

@@ -138,9 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const handler = Plaid.create({
             token: link_token,
             onSuccess: async (public_token, metadata) => {
-                console.log('Plaid Link onSuccess callback fired.');
-                console.log('onSuccess - public_token:', public_token);
-                console.log('onSuccess - metadata:', metadata);
+                console.log('--- Plaid Link onSuccess --- ');
+                console.log('public_token:', public_token);
+                console.log('metadata:', metadata);
                 const response = await fetch('/api/exchange_public_token', {
                     method: 'POST',
                     credentials: 'same-origin',
@@ -164,11 +164,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('An unexpected error occurred.');
                 }
             },
-            onEvent: (ev, md) => {
-              console.log('Plaid Link onEvent:', ev, md);
+            onEvent: (eventName, metadata) => {
+              console.log('--- Plaid Link onEvent ---');
+              console.log('eventName:', eventName);
+              console.log('metadata:', metadata);
             },
-            onExit: (err, md) => {
-                console.warn('Plaid Link onExit:', err, md);
+            onExit: (err, metadata) => {
+                console.log('--- Plaid Link onExit ---');
+                console.warn('err:', err);
+                console.warn('metadata:', metadata);
                 if (md?.status === 'requires_oauth') {
                     alert('To finish adding your account, please log in to your bank when prompted. Would you like to try again?');
                     // Optionally, you could add logic here to show a retry button
