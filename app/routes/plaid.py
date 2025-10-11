@@ -111,7 +111,7 @@ def create_link_token():
     current_app.logger.info("--- create_link_token: start ---")
     try:
         client_id = session['client_id']  # will 400/KeyError if missing; fine since /plaid protects it
-        redirect_uri = "https://lemainframe.duckdns.org/oauth-return"
+        redirect_uri = "https://lemainframe.duckdns.org/oauth-return.html"
         current_app.logger.info(f"create_link_token: client_id={client_id}, redirect_uri={redirect_uri}")
 
         req = LinkTokenCreateRequest(
@@ -120,7 +120,7 @@ def create_link_token():
             products=[Products(p) for p in current_app.config['PLAID_PRODUCTS']],
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
-            redirect_uri="https://lemainframe.duckdns.org/oauth-return",   # <<< keep this for OAuth inst’ns
+            redirect_uri="https://lemainframe.duckdns.org/oauth-return.html",   # <<< keep this for OAuth inst’ns
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']
@@ -159,7 +159,7 @@ def generate_hosted_link(client_id):
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             webhook=current_app.config['PLAID_WEBHOOK_URL'],
-            redirect_uri="https://lemainframe.duckdns.org/oauth-return",
+            redirect_uri="https://lemainframe.duckdns.org/oauth-return.html",
             hosted_link={},
         )
         response = current_app.plaid_client.link_token_create(request)
@@ -187,7 +187,7 @@ def create_link_token_for_update():
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             access_token=item.access_token,
-            redirect_uri="https://lemainframe.duckdns.org/oauth-return",  # ← REQUIRED for OAuth institutions
+            redirect_uri="https://lemainframe.duckdns.org/oauth-return.html",  # ← REQUIRED for OAuth institutions
         )
         response = current_app.plaid_client.link_token_create(link_token_request)
         return jsonify(response.to_dict())
