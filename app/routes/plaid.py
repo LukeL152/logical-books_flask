@@ -20,7 +20,6 @@ import os
 import json
 from datetime import datetime
 import logging
-import secrets
 
 plaid_bp = Blueprint('plaid', __name__)
 
@@ -68,17 +67,22 @@ def verify_plaid_webhook(request):
 
 @plaid_bp.route('/plaid')
 def plaid_page():
+    current_app.logger.info("--- plaid_page: start ---")
     if 'client_id' not in session:
+        current_app.logger.warning("plaid_page: client_id not in session, redirecting to clients page")
         return redirect(url_for('clients.clients'))
     
     client_id = session.get('client_id')
+    current_app.logger.info(f"plaid_page: client_id={client_id}")
     if not client_id:
+        current_app.logger.warning("plaid_page: client_id is None, redirecting to clients page")
         return redirect(url_for('clients.clients'))
 
     client = Client.query.get(client_id)
     plaid_items = PlaidItem.query.filter_by(client_id=client_id).all()
     accounts = Account.query.filter_by(client_id=client_id).order_by(Account.name).all()
     
+    current_app.logger.info("--- plaid_page: end ---")
     return render_template('plaid.html', 
                            plaid_items=plaid_items, 
                            accounts=accounts, 
@@ -86,43 +90,34 @@ def plaid_page():
 
 @plaid_bp.route('/api/current_link_token')
 def current_link_token():
+    current_app.logger.info("--- current_link_token: start ---")
     t = session.get('link_token')
     if not t:
+        current_app.logger.warning("current_link_token: no link_token in session")
         return jsonify({'error': 'no token in session'}), 404
+    current_app.logger.info(f"current_link_token: found link_token: {t[:10]}...")
+    current_app.logger.info("--- current_link_token: end ---")
     return jsonify({'link_token': t})
 
 @plaid_bp.route("/oauth-return")
 def plaid_oauth_return():
+    current_app.logger.info("--- plaid_oauth_return: start ---")
     current_app.logger.info(f"plaid_oauth_return: Incoming request URL: {request.url}")
-    
-    # Verify the OAuth state ID
-    returned_state_id = request.args.get('oauth_state_id')
-    session_state_id = session.get('oauth_state_id')
-
-    if not returned_state_id or returned_state_id != session_state_id:
-        current_app.logger.error(f"OAuth state ID mismatch. Returned: {returned_state_id}, Session: {session_state_id}")
-        return "Invalid OAuth state", 403
-
-    current_app.logger.info("OAuth state ID verified successfully.")
-
-    link_token = session.get('link_token')
+    link_token = session.get('link_token') or request.args.get('lt')
     if not link_token:
-        current_app.logger.error("Could not find link_token in session during OAuth return.")
-        # Handle this error gracefully, maybe redirect to an error page
-        return "Session expired, please try again.", 400
-
-    current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token[:10]}...")
+        current_app.logger.error("plaid_oauth_return: could not find link_token in session or query params")
+    else:
+        current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token[:10]}...")
+    current_app.logger.info("--- plaid_oauth_return: end ---")
     return render_template("oauth-return.html", link_token=link_token)
 
 @plaid_bp.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
+    current_app.logger.info("--- create_link_token: start ---")
     try:
         client_id = session['client_id']  # will 400/KeyError if missing; fine since /plaid protects it
         redirect_uri = os.environ.get('PLAID_REDIRECT_URI')
         current_app.logger.info(f"create_link_token: client_id={client_id}, redirect_uri={redirect_uri}")
-
-        oauth_state_id = secrets.token_hex(16)
-        session['oauth_state_id'] = oauth_state_id
 
         req = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(client_user_id=str(client_id)),
@@ -131,10 +126,10 @@ def create_link_token():
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             redirect_uri=redirect_uri,   # <<< keep this for OAuth inst’ns
-            oauth_state_id=oauth_state_id,
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']
+        current_app.logger.info(f"create_link_token: created link_token: {link_token[:24]}…")
 
         # save for OAuth resume + client identification
         db.session.add(PendingPlaidLink(link_token=link_token, client_id=client_id, purpose='standard'))
@@ -142,12 +137,14 @@ def create_link_token():
 
         # optional convenience for same-tab resume
         session['link_token'] = link_token
-        current_app.logger.info(f"create_link_token: link_token={link_token[:24]}…")
+        current_app.logger.info(f"create_link_token: saved link_token to session")
+        current_app.logger.info("--- create_link_token: end ---")
         return jsonify(resp.to_dict())
     except plaid.exceptions.ApiException as e:
+        current_app.logger.error(f"create_link_token: Plaid API exception: {e}")
         return jsonify(json.loads(e.body)), 500
     except Exception as e:
-        current_app.logger.error(f"Unexpected error in create_link_token: {e}")
+        current_app.logger.error(f"create_link_token: Unexpected error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @plaid_bp.route('/api/generate_hosted_link/<int:client_id>', methods=['POST'])
@@ -239,6 +236,7 @@ def _exchange_public_token(public_token, institution_name, institution_id, clien
 
 @plaid_bp.route('/api/exchange_public_token', methods=['POST'])
 def exchange_public_token():
+    current_app.logger.info("--- exchange_public_token: start ---")
     body = request.get_json() or {}
     public_token = body.get('public_token')
     link_token   = body.get('link_token')
@@ -263,6 +261,7 @@ def exchange_public_token():
 
     institution_name = body.get('institution_name')
     institution_id = body.get('institution_id')
+    current_app.logger.info(f"exchange_public_token: institution_name={institution_name}, institution_id={institution_id}")
 
     new_item, error, success_message = _exchange_public_token(public_token, institution_name, institution_id, client_id)
     if error:
@@ -274,12 +273,15 @@ def exchange_public_token():
     
     flash(success_message, 'success')
     current_app.logger.info(f"exchange_public_token: Successfully exchanged public token for client_id={client_id}. Redirecting to /plaid.")
+    current_app.logger.info("--- exchange_public_token: end ---")
     return jsonify({'status': 'success', 'redirect_url': url_for('plaid.plaid_page')})
 
 @plaid_bp.route('/api/plaid_webhook', methods=['POST'])
 def plaid_webhook():
+    current_app.logger.info("--- plaid_webhook: start ---")
     is_valid, error_response = verify_plaid_webhook(request)
     if not is_valid:
+        current_app.logger.error(f"plaid_webhook: Webhook verification failed: {error_response[0]}")
         return jsonify({'error': error_response[0]}), error_response[1]
 
     data = request.get_json()
@@ -325,6 +327,7 @@ def plaid_webhook():
                 logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
                 db.session.delete(pending_link)
                 db.session.commit()
+                current_app.logger.info("--- plaid_webhook: end (success) ---")
                 return jsonify({'status': 'success'})
 
             except plaid.exceptions.ApiException as e:
@@ -334,8 +337,10 @@ def plaid_webhook():
             logging.info(f"Webhook for link_token '{link_token}' was not successful (status: {data.get('status')}).")
             db.session.delete(pending_link)
             db.session.commit()
+            current_app.logger.info("--- plaid_webhook: end (not success) ---")
             return jsonify({'status': 'ignored', 'reason': 'not_success'})
 
+    current_app.logger.info("--- plaid_webhook: end (received) ---")
     return jsonify({'status': 'received'})
 
 @plaid_bp.route('/api/transactions/sync', methods=['POST'])
