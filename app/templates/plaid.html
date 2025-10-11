@@ -123,6 +123,8 @@
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    finishOAuth();
+
     console.log('DOMContentLoaded event fired.');
     const linkAccountButton = document.getElementById('link-account-button');
 
@@ -173,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('--- Plaid Link onExit ---');
                 console.warn('err:', err);
                 console.warn('metadata:', metadata);
-                if (md?.status === 'requires_oauth') {
+                if (metadata?.status === 'requires_oauth') {
                     alert('To finish adding your account, please log in to your bank when prompted. Would you like to try again?');
                     // Optionally, you could add logic here to show a retry button
                 }
@@ -435,6 +437,58 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    function finishOAuth() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const oauth_state_id = urlParams.get('oauth_state_id');
+      const code = urlParams.get('code');
+
+      if (oauth_state_id || code) {
+        const link_token = localStorage.getItem("link_token");
+        console.log(`I retrieved ${link_token} from local storage`);
+
+        const handler = Plaid.create({
+          token: link_token,
+          receivedRedirectUri: window.location.href,
+          onSuccess: async (publicToken, metadata) => {
+            console.log(
+              `I have a public token: ${publicToken} I should exchange this`
+            );
+            await exchangeToken(publicToken, link_token, metadata);
+          },
+          onExit: (err, metadata) => {
+            console.log(
+              `I'm all done. Error: ${JSON.stringify(err)} Metadata: ${JSON.stringify(
+                metadata
+              )}`
+            );
+            if (err !== null) {
+              // handle error
+            }
+          },
+          onEvent: (eventName, metadata) => {
+            console.log(`Event ${eventName}`);
+          },
+        });
+        handler.open();
+      }
+    }
+
+    async function exchangeToken(publicToken, linkToken, metadata) {
+      const response = await fetch('/api/exchange_public_token', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              public_token: publicToken,
+              link_token: linkToken, // ← include this
+              institution_name: metadata.institution.name,
+              institution_id: metadata.institution.institution_id
+          }),
+      });
+      console.log("Done exchanging our token");
+      window.location.href = "/plaid";
+    }
 });
 </script>
 {% endblock %}
