@@ -92,9 +92,27 @@ def current_link_token():
 @plaid_bp.route("/oauth-return")
 def plaid_oauth_return():
     current_app.logger.info(f"plaid_oauth_return: Incoming request URL: {request.url}")
-    link_token = session.get('link_token') or request.args.get('lt')
+    
+    # Verify the OAuth state ID
+    returned_state_id = request.args.get('oauth_state_id')
+    session_state_id = session.get('oauth_state_id')
+
+    if not returned_state_id or returned_state_id != session_state_id:
+        current_app.logger.error(f"OAuth state ID mismatch. Returned: {returned_state_id}, Session: {session_state_id}")
+        return "Invalid OAuth state", 403
+
+    current_app.logger.info("OAuth state ID verified successfully.")
+
+    link_token = session.get('link_token')
+    if not link_token:
+        current_app.logger.error("Could not find link_token in session during OAuth return.")
+        # Handle this error gracefully, maybe redirect to an error page
+        return "Session expired, please try again.", 400
+
     current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token[:10]}...")
     return render_template("oauth-return.html", link_token=link_token)
+
+import secrets
 
 @plaid_bp.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
@@ -103,6 +121,9 @@ def create_link_token():
         redirect_uri = os.environ.get('PLAID_REDIRECT_URI')
         current_app.logger.info(f"create_link_token: client_id={client_id}, redirect_uri={redirect_uri}")
 
+        oauth_state_id = secrets.token_hex(16)
+        session['oauth_state_id'] = oauth_state_id
+
         req = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(client_user_id=str(client_id)),
             client_name="Logical Books",
@@ -110,6 +131,7 @@ def create_link_token():
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             redirect_uri=redirect_uri,   # <<< keep this for OAuth inst’ns
+            oauth_state_id=oauth_state_id,
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']

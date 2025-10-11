@@ -10,37 +10,18 @@ if (window.top !== window.self) {
   (async () => {
     console.log("[oauth-return] href:", window.location.href);
 
-	// Use the link_token injected directly by the server
-	const link_token = "{{ link_token }}";
-	
-	    // 1) Retrieve the original link_token (session → localStorage fallback)
-	//    let link_token = null;
-	//    try {
-	//      const resp = await fetch('/api/current_link_token', { credentials: 'same-origin' });
-	//      if (resp.ok) {
-	//        const data = await resp.json();
-	//        link_token = data.link_token;
-	//        console.log("[oauth-return] link_token from session:", (link_token || '').slice(0, 18));
-	//      } else {
-	//        console.warn("[oauth-return] no token in session; falling back to localStorage");
-	//      }
-	//    } catch (e) {
-	//      console.warn("[oauth-return] error calling /api/current_link_token:", e);
-	//    }
-	//    if (!link_token) {
-	//      link_token = localStorage.getItem('plaid_link_token');
-	//      console.log("[oauth-return] link_token from localStorage:", (link_token || '').slice(0, 18));
-	//    }
-	
-    // Guard: must have the original token
+    // Use the link_token injected directly by the server
+    const link_token = "{{ link_token }}";
+    console.log("[oauth-return] link_token from server:", (link_token || '').slice(0, 18));
+
+    // Guard: must have the token from the server
     if (!link_token) {
-      console.error("[oauth-return] No link_token available to resume Plaid Link");
-      alert("Could not resume bank connection. Please try again.");
+      console.error("[oauth-return] No link_token provided by server to resume Plaid Link.");
+      alert("Could not resume bank connection. Your session may have expired. Please try again.");
       window.location.replace('/plaid');
       return;
     }
 
-    // 2) Resume OAuth
     const handler = Plaid.create({
       token: link_token,
       receivedRedirectUri: window.location.href,
@@ -51,7 +32,7 @@ if (window.top !== window.self) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               public_token,
-              link_token,
+              link_token, // Pass the token back to associate the session
               institution_name: md?.institution?.name || null,
               institution_id: md?.institution?.institution_id || null
             }),
@@ -60,9 +41,6 @@ if (window.top !== window.self) {
 
           const body = await r.json().catch(() => ({}));
           console.log("[oauth-return] exchange response:", r.status, body);
-
-          // Clear the stored token on success
-          if (r.ok) localStorage.removeItem('plaid_link_token');
 
           // Prefer server-provided redirect
           if (body?.redirect_url) {
