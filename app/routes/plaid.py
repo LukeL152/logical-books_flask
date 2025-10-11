@@ -103,20 +103,15 @@ def current_link_token():
 def plaid_oauth_return():
     current_app.logger.info("--- plaid_oauth_return: start ---")
     current_app.logger.info(f"plaid_oauth_return: Incoming request URL: {request.url}")
-    link_token = session.get('link_token') or request.args.get('lt')
-    if not link_token:
-        current_app.logger.error("plaid_oauth_return: could not find link_token in session or query params")
-    else:
-        current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token}")
     current_app.logger.info("--- plaid_oauth_return: end ---")
-    return render_template("oauth-return.html", link_token=link_token)
+    return render_template("oauth-return.html", link_token=None)
 
 @plaid_bp.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     current_app.logger.info("--- create_link_token: start ---")
     try:
         client_id = session['client_id']  # will 400/KeyError if missing; fine since /plaid protects it
-        redirect_uri = os.environ.get('PLAID_REDIRECT_URI')
+        redirect_uri = "https://lemainframe.duckdns.org/oauth-return"
         current_app.logger.info(f"create_link_token: client_id={client_id}, redirect_uri={redirect_uri}")
 
         req = LinkTokenCreateRequest(
@@ -125,7 +120,7 @@ def create_link_token():
             products=[Products(p) for p in current_app.config['PLAID_PRODUCTS']],
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
-            redirect_uri=redirect_uri,   # <<< keep this for OAuth inst’ns
+            redirect_uri="https://lemainframe.duckdns.org/oauth-return",   # <<< keep this for OAuth inst’ns
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']
@@ -135,9 +130,6 @@ def create_link_token():
         db.session.add(PendingPlaidLink(link_token=link_token, client_id=client_id, purpose='standard'))
         db.session.commit()
 
-        # optional convenience for same-tab resume
-        session['link_token'] = link_token
-        current_app.logger.info(f"create_link_token: saved link_token to session")
         current_app.logger.info("--- create_link_token: end ---")
         return jsonify(resp.to_dict())
     except plaid.exceptions.ApiException as e:
@@ -167,7 +159,8 @@ def generate_hosted_link(client_id):
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             webhook=current_app.config['PLAID_WEBHOOK_URL'],
-            hosted_link={}
+            redirect_uri="https://lemainframe.duckdns.org/oauth-return",
+            hosted_link={},
         )
         response = current_app.plaid_client.link_token_create(request)
         
@@ -194,7 +187,7 @@ def create_link_token_for_update():
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             access_token=item.access_token,
-            redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),  # ← REQUIRED for OAuth institutions
+            redirect_uri="https://lemainframe.duckdns.org/oauth-return",  # ← REQUIRED for OAuth institutions
         )
         response = current_app.plaid_client.link_token_create(link_token_request)
         return jsonify(response.to_dict())
