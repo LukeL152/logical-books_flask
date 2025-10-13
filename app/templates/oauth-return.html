@@ -1,63 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Oauth Return Page</title>
-  </head>
-  <body>
-    <div id="userMessage">Welcome back!</div>
-    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-    <script>
-      function finishOAuth() {
-        const link_token = localStorage.getItem("link_token");
-        console.log(`I retrieved ${link_token} from local storage`);
+<h1>✅ You are on /plaid/oauth-return</h1>
+<script>
+// Force top-level (prevents iframe oddities)
+if (window.top !== window.self) {
+  window.top.location = window.location.href;
+}
+</script>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+  (async () => {
+    console.log("[oauth-return] href:", window.location.href);
 
-        const handler = Plaid.create({
-          token: link_token,
-          receivedRedirectUri: window.location.href,
-          onSuccess: async (publicToken, metadata) => {
-            console.log(
-              `I have a public token: ${publicToken} I should exchange this`
-            );
-            await exchangeToken(publicToken, link_token, metadata);
-          },
-          onExit: (err, metadata) => {
-            console.log(
-              `I'm all done. Error: ${JSON.stringify(err)} Metadata: ${JSON.stringify(
-                metadata
-              )}`
-            );
-            if (err !== null) {
-              document.querySelector("#userMessage").innerHTML =
-                "Oh no! We got some kind of error! Please <a href='/plaid'>try again.</a>";
-            }
-          },
-          onEvent: (eventName, metadata) => {
-            console.log(`Event ${eventName}`);
-          },
-        });
-        handler.open();
-      }
+    // Use the link_token injected directly by the server
+    const link_token = "{{ link_token }}";
+    console.log("[oauth-return] link_token from server:", (link_token || '').slice(0, 18));
 
-      async function exchangeToken(publicToken, linkToken, metadata) {
-        const response = await fetch('/api/exchange_public_token', {
+    // Guard: must have the token from the server
+    if (!link_token) {
+      console.error("[oauth-return] No link_token provided by server to resume Plaid Link.");
+      alert("Could not resume bank connection. Your session may have expired. Please try again.");
+      window.location.replace('/plaid');
+      return;
+    }
+
+    const handler = Plaid.create({
+      token: link_token,
+      receivedRedirectUri: window.location.href,
+      onSuccess: async (public_token, md) => {
+        try {
+          const r = await fetch('/api/exchange_public_token', {
             method: 'POST',
-            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                public_token: publicToken,
-                link_token: linkToken, // ← include this
-                institution_name: metadata.institution.name,
-                institution_id: metadata.institution.institution_id
+              public_token,
+              link_token, // Pass the token back to associate the session
+              institution_name: md?.institution?.name || null,
+              institution_id: md?.institution?.institution_id || null
             }),
-        });
-        console.log("Done exchanging our token");
-        window.location.href = "/plaid";
-      }
+            credentials: 'same-origin'
+          });
 
-      finishOAuth();
-    </script>
-  </body>
-</html>
+          const body = await r.json().catch(() => ({}));
+          console.log("[oauth-return] exchange response:", r.status, body);
+
+          // Prefer server-provided redirect
+          if (body?.redirect_url) {
+            window.location.replace(body.redirect_url);
+          } else {
+            window.location.replace('/plaid');
+          }
+        } catch (ex) {
+          console.error("[oauth-return] exchange_public_token threw:", ex);
+          alert("Linked, but finalization failed. Please refresh your accounts page.");
+          window.location.replace('/plaid');
+        }
+      },
+      onExit: (err, md) => {
+        console.warn("[oauth-return] Link onExit", err, md);
+        if (md?.status === 'requires_oauth') {
+          alert('To finish adding your account, you’ll need to log in when prompted. Try again?');
+        } else if (err) {
+          alert(`Plaid exited: ${err.display_message || err.error_message || err.error_code || 'Unknown error'}`);
+        }
+        window.location.replace('/plaid');
+      },
+      onEvent: (ev, md) => console.log("[oauth-return] onEvent", ev, md),
+    });
+
+    handler.open();
+  })();
+</script>
