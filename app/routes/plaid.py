@@ -47,7 +47,7 @@ def verify_plaid_webhook(request):
 
         # Verify the JWT signature
         algorithm = jwt.get_algorithm_by_name('ES256')
-        public_key = algorithm.from_jwk(json.dumps(jwk))
+        public_key = algorithm.from_jwk(json.dumps(jwk.to_dict()))
         decoded_jwt = jwt.decode(jwt_token, public_key, algorithms=['ES256'], options={"verify_aud": False})
 
         # Check the timestamp
