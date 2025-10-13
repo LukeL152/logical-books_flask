@@ -81,7 +81,7 @@ def delete_client(client_id):
     Account.query.filter_by(client_id=client_id).delete()
     Budget.query.filter_by(client_id=client_id).delete()
     TransactionRule.query.filter_by(client_id=client_id).delete()
-    PlaidAccount.query.filter_by(client_id=client_id).delete()
+
     PlaidItem.query.filter_by(client_id=client_id).delete()
     log_audit(f'Deleted client: {client.business_name}')
     db.session.delete(client)
