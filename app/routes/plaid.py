@@ -11,6 +11,7 @@ from plaid.model.link_token_get_request import LinkTokenGetRequest
 from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.item_remove_request import ItemRemoveRequest
+from plaid.model.webhook_verification_key_get_request import WebhookVerificationKeyGetRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
@@ -18,7 +19,7 @@ from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 plaid_bp = Blueprint('plaid', __name__)
@@ -40,7 +41,7 @@ def verify_plaid_webhook(request):
 
         # Fetch the corresponding JWK from Plaid
         response = current_app.plaid_client.webhook_verification_key_get(
-            plaid.model.webhook_verification_key_get_request.WebhookVerificationKeyGetRequest(key_id=key_id)
+            WebhookVerificationKeyGetRequest(key_id=key_id)
         )
         jwk = response['key']
 
@@ -111,18 +112,6 @@ def plaid_oauth_return():
     current_app.logger.info("--- plaid_oauth_return: end ---")
     return render_template("oauth-return.html", link_token=link_token)
 
-@plaid_bp.route("/oauth-return")
-def plaid_oauth_return():
-    current_app.logger.info("--- plaid_oauth_return: start ---")
-    current_app.logger.info(f"plaid_oauth_return: Incoming request URL: {request.url}")
-    link_token = session.get('link_token') or request.args.get('lt')
-    if not link_token:
-        current_app.logger.error("plaid_oauth_return: could not find link_token in session or query params")
-    else:
-        current_app.logger.info(f"plaid_oauth_return: Using link_token: {link_token}")
-    current_app.logger.info("--- plaid_oauth_return: end ---")
-    return render_template("oauth-return.html", link_token=link_token)
-
 @plaid_bp.route('/api/create_link_token', methods=['POST'])
 def create_link_token():
     current_app.logger.info("--- create_link_token: start ---")
@@ -163,7 +152,7 @@ def generate_hosted_link(client_id):
         return "Unauthorized", 403
 
     if not current_app.config['PLAID_WEBHOOK_URL']:
-        logging.error("PLAID_WEBHOOK_URL is not set in the environment.")
+        current_app.logger.error("PLAID_WEBHOOK_URL is not set in the environment.")
         return jsonify({'error': 'Server configuration error'}), 500
 
     try:
@@ -330,21 +319,21 @@ def plaid_webhook():
                             institution_name = first_item_add_result['institution'].get('name')
 
                 if not institution_id or not institution_name:
-                    logging.error(f"Could not find institution details in /link/token/get response for {link_token}")
+                    current_app.logger.error(f"Could not find institution details in /link/token/get response for {link_token}")
                     return jsonify({'status': 'error', 'reason': 'institution_details_missing_from_api'}), 500
 
                 _exchange_public_token(public_token, institution_name, institution_id, client_id)
-                logging.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
+                current_app.logger.info(f"Successfully processed SESSION_FINISHED webhook for client {client_id}")
                 db.session.delete(pending_link)
                 db.session.commit()
                 current_app.logger.info("--- plaid_webhook: end (success) ---")
                 return jsonify({'status': 'success'})
 
             except plaid.exceptions.ApiException as e:
-                logging.error(f"Plaid API error during /link/token/get: {e}")
+                current_app.logger.error(f"Plaid API error during /link/token/get: {e}")
                 return jsonify({'status': 'error', 'reason': 'plaid_api_error'}), 500
         else:
-            logging.info(f"Webhook for link_token '{link_token}' was not successful (status: {data.get('status')}).")
+            current_app.logger.info(f"Webhook for link_token '{link_token}' was not successful (status: {data.get('status')}).")
             db.session.delete(pending_link)
             db.session.commit()
             current_app.logger.info("--- plaid_webhook: end (not success) ---")
@@ -396,15 +385,17 @@ def sync_transactions():
         item.last_synced = datetime.now()
         db.session.commit()
 
-    except Exception as e:
+    except plaid.exceptions.ApiException as e:
         try:
             error_body = json.loads(e.body)
             if 'error_code' in error_body and error_body['error_code'] == 'NO_ACCOUNTS':
                 current_app.logger.info("No accounts found for this item during transaction sync.")
                 return jsonify({'status': 'no_accounts'})
-        except:
-            pass # Not a Plaid error with a JSON body
-
+        except (json.JSONDecodeError, AttributeError):
+             pass  # Not a Plaid error with a JSON body we can parse
+        current_app.logger.error(f"Plaid API error syncing transactions: {e}")
+        return jsonify({'error': 'A Plaid API error occurred while syncing transactions.'}), 500
+    except Exception as e:
         current_app.logger.error(f"Error syncing transactions: {e}")
         return jsonify({'error': 'An error occurred while syncing transactions.'}), 500
 
@@ -508,6 +499,7 @@ def sync_plaid_accounts(plaid_item_id=None):
                 )
             except plaid.exceptions.ApiException as e:
                 current_app.logger.error(f"Error syncing accounts for item {item.id}: {e}")
+                return 0, 0
         return total_added, total_deleted
                 
 @plaid_bp.route('/api/plaid/sync_accounts', methods=['POST'])
