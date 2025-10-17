@@ -212,7 +212,44 @@ def bulk_assign_accounts():
 
 @transactions_bp.route('/run_unapproved_rules', methods=['POST'])
 def run_unapproved_rules():
-    # Placeholder for logic to re-run rules on unapproved transactions
+    unapproved_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()
+    rules = TransactionRule.query.filter_by(client_id=session['client_id']).all()
+
+    for transaction in unapproved_transactions:
+        for rule in rules:
+            # Check if the rule applies to the transaction
+            if rule.keyword and rule.keyword.lower() not in transaction.description.lower():
+                continue
+            if rule.category_condition and rule.category_condition != transaction.category:
+                continue
+            if rule.transaction_type:
+                if rule.transaction_type == 'debit' and transaction.amount < 0:
+                    continue
+                if rule.transaction_type == 'credit' and transaction.amount > 0:
+                    continue
+            if rule.min_amount and abs(transaction.amount) < rule.min_amount:
+                continue
+            if rule.max_amount and abs(transaction.amount) > rule.max_amount:
+                continue
+            if rule.source_account_id and rule.source_account_id != transaction.source_account_id:
+                continue
+
+            # Apply the rule
+            if rule.new_category:
+                transaction.category = rule.new_category
+            if rule.new_description:
+                transaction.description = rule.new_description
+            if rule.new_debit_account_id:
+                transaction.debit_account_id = rule.new_debit_account_id
+            if rule.new_credit_account_id:
+                transaction.credit_account_id = rule.new_credit_account_id
+            if rule.delete_transaction:
+                db.session.delete(transaction)
+            
+            transaction.rule_modified = True
+            break  # Stop after the first matching rule
+
+    db.session.commit()
     flash('Transaction rules re-applied to unapproved transactions.', 'success')
     return redirect(url_for('transactions.unapproved_transactions'))
 
