@@ -570,6 +570,7 @@ def fetch_transactions():
                 added_count += 1
         
         db.session.commit()
+        return jsonify({'status': 'success', 'added': added_count})
     except Exception as e:
         return jsonify({'error': 'An error occurred while fetching transactions.'}), 500
 
