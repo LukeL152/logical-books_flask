@@ -266,6 +266,7 @@ def run_unapproved_rules():
                 transaction.credit_account_id = rule.new_credit_account_id
             if rule.delete_transaction:
                 db.session.delete(transaction)
+                continue
             
             transaction.rule_modified = True
             break  # Stop after the first matching rule

@@ -172,9 +172,21 @@ $(document).ready(function() {
                 checkedCount++;
             }
         }
-        approveBtn.classList.toggle('disabled', checkedCount === 0);
-        deleteBtn.classList.toggle('disabled', checkedCount === 0);
-        assignBtn.classList.toggle('disabled', checkedCount === 0);
+        if (checkedCount === 0) {
+            approveBtn.classList.add('disabled');
+            deleteBtn.classList.add('disabled');
+            assignBtn.classList.add('disabled');
+            approveBtn.setAttribute('aria-disabled', 'true');
+            deleteBtn.setAttribute('aria-disabled', 'true');
+            assignBtn.setAttribute('aria-disabled', 'true');
+        } else {
+            approveBtn.classList.remove('disabled');
+            deleteBtn.classList.remove('disabled');
+            assignBtn.classList.remove('disabled');
+            approveBtn.removeAttribute('aria-disabled');
+            deleteBtn.removeAttribute('aria-disabled');
+            assignBtn.removeAttribute('aria-disabled');
+        }
     }
 
     for (const checkbox of checkboxes) {
