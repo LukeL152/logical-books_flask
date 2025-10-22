@@ -210,6 +210,27 @@ def bulk_assign_accounts():
     flash(f'{len(transaction_ids)} transactions updated successfully.', 'success')
     return redirect(url_for('transactions.unapproved_transactions'))
 
+@transactions_bp.route('/assign_accounts/<int:transaction_id>', methods=['POST'])
+def assign_accounts(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    debit_account_id = request.form.get(f'debit_account_{transaction_id}')
+    credit_account_id = request.form.get(f'credit_account_{transaction_id}')
+
+    if not debit_account_id or not credit_account_id:
+        flash('Debit and credit accounts must be selected.', 'danger')
+        return redirect(url_for('transactions.unapproved_transactions'))
+
+    transaction.debit_account_id = debit_account_id
+    transaction.credit_account_id = credit_account_id
+    transaction.rule_modified = True
+    db.session.commit()
+
+    flash('Accounts assigned successfully.', 'success')
+    return redirect(url_for('transactions.unapproved_transactions'))
+
 @transactions_bp.route('/run_unapproved_rules', methods=['POST'])
 def run_unapproved_rules():
     unapproved_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()

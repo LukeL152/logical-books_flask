@@ -200,6 +200,16 @@ def bulk_actions():
         JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
         db.session.commit()
         flash(f'{len(entry_ids)} entries unlocked successfully.', 'success')
+    elif action == 'unapprove':
+        entries = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
+        for entry in entries:
+            if entry.transaction_id:
+                transaction = Transaction.query.get(entry.transaction_id)
+                if transaction:
+                    transaction.is_approved = False
+            db.session.delete(entry)
+        db.session.commit()
+        flash(f'{len(entries)} entries unapproved and sent back to the unapproved list.', 'success')
     
     return redirect(url_for('journal.journal'))
 
