@@ -54,7 +54,9 @@
                     </select>
                 </td>
                 
-                <td>
+                    <form action="{{ url_for('transactions.approve_transaction', transaction_id=transaction.id) }}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                    </form>
                     <a href="{{ url_for('transactions.delete_unapproved_transaction', transaction_id=transaction.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this transaction?')">Delete</a>
                 </td>
             </tr>
@@ -104,6 +106,9 @@
                     <form action="{{ url_for('transactions.assign_accounts', transaction_id=transaction.id) }}" method="POST" class="d-inline">
                         <button type="submit" class="btn btn-sm btn-primary">Save</button>
                     </form>
+                    <form action="{{ url_for('transactions.approve_transaction', transaction_id=transaction.id) }}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                    </form>
                     <a href="{{ url_for('transactions.delete_unapproved_transaction', transaction_id=transaction.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this transaction?')">Delete</a>
                 </td>
             </tr>
@@ -149,8 +154,9 @@
 {% block scripts %}
 <script>
 $(document).ready(function() {
-    $('#rule-modified-table').DataTable();
-    $('#unmodified-table').DataTable();
+    var ruleModifiedTable = $('#rule-modified-table').DataTable();
+    var unmodifiedTable = $('#unmodified-table').DataTable();
+
     $('.debit-account-select').select2();
     $('.credit-account-select').select2();
     $('#bulk_debit_account_id').select2({
@@ -163,15 +169,11 @@ $(document).ready(function() {
     const approveBtn = document.getElementById('approve-selected-btn');
     const deleteBtn = document.getElementById('delete-selected-btn');
     const assignBtn = document.getElementById('assign-accounts-btn');
-    const checkboxes = document.querySelectorAll('input[name="transaction_ids"]');
 
     function toggleActionBtns() {
-        let checkedCount = 0;
-        for (const checkbox of checkboxes) {
-            if (checkbox.checked) {
-                checkedCount++;
-            }
-        }
+        var checkedCount = ruleModifiedTable.rows().nodes().to$().find('input[type="checkbox"]:checked').length +
+                           unmodifiedTable.rows().nodes().to$().find('input[type="checkbox"]:checked').length;
+
         if (checkedCount === 0) {
             approveBtn.classList.add('disabled');
             deleteBtn.classList.add('disabled');
@@ -189,23 +191,23 @@ $(document).ready(function() {
         }
     }
 
-    for (const checkbox of checkboxes) {
-        checkbox.addEventListener('click', toggleActionBtns);
-    }
+    $('#rule-modified-table tbody').on('change', 'input[type="checkbox"]', function() {
+        toggleActionBtns();
+    });
+
+    $('#unmodified-table tbody').on('change', 'input[type="checkbox"]', function() {
+        toggleActionBtns();
+    });
 
     document.getElementById('select-all-rule-modified-approve').addEventListener('click', function(event) {
-        const checkboxes = document.querySelectorAll('.approve-checkbox-rule-modified');
-        for (const checkbox of checkboxes) {
-            checkbox.checked = event.target.checked;
-        }
+        var checkboxes = ruleModifiedTable.rows().nodes().to$().find('input[type="checkbox"]');
+        checkboxes.prop('checked', event.target.checked);
         toggleActionBtns();
     });
 
     document.getElementById('select-all-unmodified-approve').addEventListener('click', function(event) {
-        const checkboxes = document.querySelectorAll('.approve-checkbox-unmodified');
-        for (const checkbox of checkboxes) {
-            checkbox.checked = event.target.checked;
-        }
+        var checkboxes = unmodifiedTable.rows().nodes().to$().find('input[type="checkbox"]');
+        checkboxes.prop('checked', event.target.checked);
         toggleActionBtns();
     });
 

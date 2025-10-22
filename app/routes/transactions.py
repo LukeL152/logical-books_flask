@@ -162,6 +162,37 @@ def approve_transactions():
     flash('Selected transactions approved and journal entries created.', 'success')
     return redirect(url_for('transactions.unapproved_transactions'))
 
+@transactions_bp.route('/approve_transaction/<int:transaction_id>', methods=['POST'])
+def approve_transaction(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    debit_account_id = request.form.get(f'debit_account_{transaction_id}')
+    credit_account_id = request.form.get(f'credit_account_{transaction_id}')
+
+    if not debit_account_id or not credit_account_id:
+        flash(f'Debit and credit accounts must be selected for transaction {transaction.id}.', 'danger')
+        return redirect(url_for('transactions.unapproved_transactions'))
+
+    new_entry = JournalEntry(
+        date=transaction.date,
+        description=transaction.description,
+        debit_account_id=debit_account_id,
+        credit_account_id=credit_account_id,
+        amount=abs(transaction.amount),
+        category=transaction.category,
+        transaction_id=transaction.id,
+        client_id=session['client_id']
+    )
+    db.session.add(new_entry)
+    transaction.is_approved = True
+    log_audit(f'Approved transaction and generated journal entry: {transaction.description}')
+
+    db.session.commit()
+    flash('Transaction approved and journal entry created.', 'success')
+    return redirect(url_for('transactions.unapproved_transactions'))
+
 @transactions_bp.route('/delete_unapproved_transaction/<int:transaction_id>')
 def delete_unapproved_transaction(transaction_id):
     transaction = Transaction.query.get_or_404(transaction_id)
