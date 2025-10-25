@@ -239,7 +239,11 @@ This section contains a running list of potential improvements for the Logical B
 
 3.  **Recurring Journal Entries:**
     *   **Observation:** Many businesses have recurring transactions like rent or subscription payments. Manually entering these each month is tedious.
-    *   **Recommendation:** Create a system for setting up recurring journal entries. You could use a scheduler to automatically create these entries on a specified day of the month.
+    **Recommendation:** Create a system for setting up recurring journal entries. You could use a scheduler to automatically create these entries on a specified day of the month.
+
+4.  **Transaction Matching for Plaid Imports:**
+    *   **Observation:** When a user transitions from manual CSV imports to Plaid, there is no way to link the existing, manually-entered transactions with the new transactions coming from Plaid. This will result in duplicates.
+    *   **Recommendation:** Build a "Transaction Matching" feature. This would be a new page where the user can see a list of their recent Plaid transactions alongside a list of their existing transactions that don't have a Plaid ID. The system could suggest matches based on date, amount, and description. The user could then confirm the matches, which would save the Plaid transaction ID to the existing transaction, preventing it from being imported again.
 
 ### Automation & Analytics Improvements
 
