@@ -3,7 +3,7 @@ from app import db
 from app.models import JournalEntry, Account, Transaction
 from datetime import datetime
 from sqlalchemy import func
-from app.utils import get_account_choices, log_audit
+from app.utils import get_account_choices, log_audit, update_all_balances
 
 journal_bp = Blueprint('journal', __name__)
 
@@ -84,6 +84,7 @@ def add_entry():
     notes = request.form.get('notes')
     new_entry = JournalEntry(date=date, description=description, debit_account_id=debit_account_id, credit_account_id=credit_account_id, amount=amount, category=category, notes=notes, client_id=session['client_id'])
     db.session.add(new_entry)
+    update_all_balances(session['client_id'])
     db.session.commit()
     log_audit(f'Added journal entry: {new_entry.description}')
     flash('Journal entry added successfully.', 'success')
@@ -102,6 +103,7 @@ def edit_entry(entry_id):
         entry.amount = abs(float(request.form['amount']))
         entry.category = request.form['category']
         entry.notes = request.form.get('notes')
+        update_all_balances(session['client_id'])
         db.session.commit()
         log_audit(f'Edited journal entry: {entry.description}')
         flash('Journal entry updated successfully.', 'success')
@@ -132,6 +134,7 @@ def delete_entry(entry_id):
             db.session.delete(transaction)
 
     db.session.delete(entry)
+    update_all_balances(session['client_id'])
     db.session.commit()
     flash('Journal entry deleted successfully.', 'success')
     return redirect(url_for('journal.journal'))
@@ -148,6 +151,7 @@ def unapprove_transaction(entry_id):
             transaction.is_approved = False
     
     db.session.delete(entry)
+    update_all_balances(session['client_id'])
     db.session.commit()
 
     flash('Transaction unapproved and sent back to the unapproved list.', 'success')
@@ -180,7 +184,8 @@ def bulk_actions():
             
         if transaction_ids_to_delete:
             Transaction.query.filter(Transaction.id.in_(transaction_ids_to_delete)).delete(synchronize_session=False)
-            
+        
+        update_all_balances(session['client_id'])
         db.session.commit()
         flash(f'{len(entries)} entries deleted successfully.', 'success')
     elif action == 'update_type':
@@ -208,6 +213,7 @@ def bulk_actions():
                 if transaction:
                     transaction.is_approved = False
             db.session.delete(entry)
+        update_all_balances(session['client_id'])
         db.session.commit()
         flash(f'{len(entries)} entries unapproved and sent back to the unapproved list.', 'success')
     
@@ -228,6 +234,7 @@ def delete_duplicate_journal_entries():
 
     if duplicates_to_delete:
         JournalEntry.query.filter(JournalEntry.id.in_(duplicates_to_delete)).delete(synchronize_session=False)
+        update_all_balances(session['client_id'])
         db.session.commit()
         flash(f'{len(duplicates_to_delete)} duplicate journal entries deleted successfully.', 'success')
     else:

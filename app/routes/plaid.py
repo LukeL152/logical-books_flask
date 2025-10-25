@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 from app import db
 from app.models import PlaidItem, PlaidAccount, PendingPlaidLink, Account, Transaction, Client
+from app.utils import update_all_balances
 import plaid
 from plaid.api import plaid_api
 from plaid.model.products import Products
@@ -81,7 +82,7 @@ def plaid_page():
 
     client = Client.query.get(client_id)
     plaid_items = PlaidItem.query.filter_by(client_id=client_id).all()
-    accounts = Account.query.filter_by(client_id=client_id).order_by(Account.name).all()
+    accounts = Account.query.filter_by(client_id=client_id).filter(~Account.children.any()).order_by(Account.name).all()
     
     current_app.logger.info("--- plaid_page: end ---")
     return render_template('plaid.html', 
@@ -385,6 +386,7 @@ def sync_transactions():
 
         item.cursor = response['next_cursor']
         item.last_synced = datetime.now()
+        update_all_balances(session['client_id'])
         db.session.commit()
 
     except plaid.exceptions.ApiException as e:
@@ -410,6 +412,10 @@ def set_plaid_account():
     plaid_account = PlaidAccount.query.get_or_404(plaid_account_id)
     if plaid_account.plaid_item.client_id != session['client_id']:
         return "Unauthorized", 403
+
+    account = Account.query.get(account_id)
+    if account and account.children.first():
+        return jsonify({'error': 'Parent accounts cannot be linked to Plaid accounts.'}), 400
     
     plaid_account.local_account_id = account_id
     db.session.commit()
@@ -571,6 +577,7 @@ def fetch_transactions():
                 db.session.add(new_transaction)
                 added_count += 1
         
+        update_all_balances(session['client_id'])
         db.session.commit()
         return jsonify({'status': 'success', 'added': added_count})
     except Exception as e:

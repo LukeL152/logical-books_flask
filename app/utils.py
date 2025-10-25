@@ -20,6 +20,38 @@ def log_audit(action):
         db.session.add(audit_log)
         db.session.commit()
 
+def update_all_balances(client_id):
+    from datetime import datetime
+
+    def _calculate_balance(account):
+        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        if account.type in ['Asset', 'Expense']:
+            return account.opening_balance + debits - credits
+        else:
+            return account.opening_balance + credits - debits
+
+    def _update_balances_recursive(account):
+        if not account.children.first():  # It's a leaf node
+            if not account.plaid_accounts:
+                account.current_balance = _calculate_balance(account)
+                account.balance_last_updated = datetime.utcnow()
+        else:  # It's a parent account
+            child_balance_sum = 0
+            for child in account.children:
+                child_balance_sum += _update_balances_recursive(child)
+            account.current_balance = child_balance_sum
+            account.balance_last_updated = datetime.utcnow()
+        
+        db.session.add(account)
+        return account.current_balance
+
+    top_level_accounts = Account.query.filter_by(client_id=client_id, parent_id=None).all()
+    for account in top_level_accounts:
+        _update_balances_recursive(account)
+    
+    db.session.commit()
+
 def get_account_tree(accounts, start_date=None, end_date=None):
     account_tree = []
     for account in accounts:
