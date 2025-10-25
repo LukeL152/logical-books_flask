@@ -370,7 +370,9 @@ def sync_transactions():
         added_count = len(added_for_account)
 
         for t in added_for_account:
-            new_transaction = Transaction(
+            if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
+                new_transaction = Transaction(
+                    plaid_transaction_id=t['transaction_id'],
                 date=t['date'],
                 description=t['name'],
                 amount=-t['amount'], # Plaid returns positive for debits, negative for credits
