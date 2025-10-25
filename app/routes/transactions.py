@@ -279,9 +279,9 @@ def run_unapproved_rules():
                     continue
                 if rule.transaction_type == 'credit' and transaction.amount > 0:
                     continue
-            if rule.min_amount is not None and abs(transaction.amount) < rule.min_amount:
+            if rule.min_amount is not None and transaction.amount < rule.min_amount:
                 continue
-            if rule.max_amount is not None and abs(transaction.amount) > rule.max_amount:
+            if rule.max_amount is not None and transaction.amount > rule.max_amount:
                 continue
             if rule.source_account_id and rule.source_account_id != transaction.source_account_id:
                 continue
