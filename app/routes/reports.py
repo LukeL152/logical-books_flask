@@ -178,6 +178,23 @@ def analysis():
     category_labels = json.dumps([item.category for item in spending_by_category])
     category_data = json.dumps([item.total for item in spending_by_category])
 
+    # --- Income by Category (Period 1) ---
+    income_by_category_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        Account.type == 'Revenue',
+        JournalEntry.client_id == client_id,
+        JournalEntry.date >= start_date_1,
+        JournalEntry.date <= end_date_1,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
+    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+
+    income_by_category = income_by_category_query.all()
+    income_category_labels = json.dumps([item.category for item in income_by_category])
+    income_category_data = json.dumps([float(item.total) for item in income_by_category])
+
     # --- Category Comparison ---
     # For simplicity, we'll just use the top 5 categories from Period 1 for comparison
     top_categories = [item.category for item in spending_by_category[:5]]
@@ -290,6 +307,9 @@ def analysis():
                            spending_by_category=spending_by_category,
                            category_labels=category_labels,
                            category_data=category_data,
+                           income_by_category=income_by_category,
+                           income_category_labels=income_category_labels,
+                           income_category_data=income_category_data,
                            category_comparison_labels=category_comparison_labels,
                            category_comparison_data_1=category_comparison_data_1,
                            category_comparison_data_2=category_comparison_data_2,
@@ -392,13 +412,67 @@ def audit_trail():
 
 @reports_bp.route('/full_pie_chart_expenses')
 def full_pie_chart_expenses():
-    # Placeholder for full pie chart expenses logic
-    return render_template('full_pie_chart.html')
+    client_id = session.get('client_id')
+    start_date_str = request.args.get('start_date', (datetime.now().date().replace(day=1)).strftime('%Y-%m-%d'))
+    end_date_str = request.args.get('end_date', datetime.now().date().strftime('%Y-%m-%d'))
+
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    spending_by_category_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
+        JournalEntry.client_id == client_id,
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
+    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+
+    spending_by_category = spending_by_category_query.all()
+    labels = json.dumps([item.category for item in spending_by_category])
+    data = json.dumps([float(item.total) for item in spending_by_category])
+
+    return render_template('full_pie_chart.html', 
+                           title='Expense Breakdown', 
+                           labels=labels, 
+                           data=data, 
+                           start_date=start_date_str, 
+                           end_date=end_date_str)
 
 @reports_bp.route('/full_pie_chart_income')
 def full_pie_chart_income():
-    # Placeholder for full pie chart income logic
-    return render_template('full_pie_chart.html')
+    client_id = session.get('client_id')
+    start_date_str = request.args.get('start_date', (datetime.now().date().replace(day=1)).strftime('%Y-%m-%d'))
+    end_date_str = request.args.get('end_date', datetime.now().date().strftime('%Y-%m-%d'))
+
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    income_by_category_query = db.session.query(
+        JournalEntry.category,
+        db.func.sum(JournalEntry.amount).label('total')
+    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        Account.type == 'Revenue',
+        JournalEntry.client_id == client_id,
+        JournalEntry.date >= start_date,
+        JournalEntry.date <= end_date,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
+    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+
+    income_by_category = income_by_category_query.all()
+    labels = json.dumps([item.category for item in income_by_category])
+    data = json.dumps([float(item.total) for item in income_by_category])
+
+    return render_template('full_pie_chart.html', 
+                           title='Income Breakdown', 
+                           labels=labels, 
+                           data=data, 
+                           start_date=start_date_str, 
+                           end_date=end_date_str)
 
 @reports_bp.route('/export/ledger')
 def export_ledger():

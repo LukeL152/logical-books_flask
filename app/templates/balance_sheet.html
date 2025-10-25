@@ -2,7 +2,8 @@
 
 {% macro render_accounts(accounts, level=0) %}
     {% for account in accounts %}
-        <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id }}" class="account-row {% if level > 0 %}child-row-{{ account.parent_id }}{% endif %}">
+        {% set balances_match = account.live_balance is not none and (account.balance - account.live_balance)|abs < 0.01 %}
+        <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id }}" class="account-row {% if level > 0 %}child-row-{{ account.parent_id }}{% endif %} {% if balances_match %}table-success{% endif %}">
             <td style="padding-left: {{ level * 25 }}px;">
                 {% if account.children %}
                     <i class="bi bi-chevron-down toggle-children" style="cursor: pointer;"></i>

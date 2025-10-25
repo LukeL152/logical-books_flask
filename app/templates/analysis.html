@@ -27,7 +27,10 @@
 
 <ul class="nav nav-tabs" id="analysisTab" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="spending-by-category-tab" data-bs-toggle="tab" data-bs-target="#spending-by-category" type="button" role="tab" aria-controls="spending-by-category" aria-selected="true">Spending by Category</button>
+        <button class="nav-link" id="income-by-category-tab" data-bs-toggle="tab" data-bs-target="#income-by-category" type="button" role="tab" aria-controls="income-by-category" aria-selected="false">Income by Category</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="spending-by-category-tab" data-bs-toggle="tab" data-bs-target="#spending-by-category" type="button" role="tab" aria-controls="spending-by-category" aria-selected="true">Spending by Category</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="category-comparison-tab" data-bs-toggle="tab" data-bs-target="#category-comparison" type="button" role="tab" aria-controls="category-comparison" aria-selected="false">Category Comparison</button>
@@ -41,8 +44,34 @@
 </ul>
 
 <div class="tab-content" id="analysisTabContent">
+    <div class="tab-pane fade" id="income-by-category" role="tabpanel" aria-labelledby="income-by-category-tab">
+        <h2 class="mt-4">Income by Category (Period 1) <a href="{{ url_for('reports.full_pie_chart_income', start_date=start_date_1, end_date=end_date_1) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a></h2>
+        <div class="row">
+            <div class="col-md-6">
+                <canvas id="incomePieChart"></canvas>
+            </div>
+            <div class="col-md-6">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in income_by_category %}
+                        <tr>
+                            <td><a href="{{ url_for('reports.category_transactions', category_name=item[0]) }}">{{ item[0] }}</a></td>
+                            <td class="text-end">{{ "%.2f"|format(item[1]) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     <div class="tab-pane fade show active" id="spending-by-category" role="tabpanel" aria-labelledby="spending-by-category-tab">
-        <h2 class="mt-4">Spending by Category (Period 1)</h2>
+        <h2 class="mt-4">Spending by Category (Period 1) <a href="{{ url_for('reports.full_pie_chart_expenses', start_date=start_date_1, end_date=end_date_1) }}" class="btn btn-sm btn-outline-primary">View Full Chart</a></h2>
         <div class="row">
             <div class="col-md-6">
                 <canvas id="categoryPieChart"></canvas>
@@ -154,6 +183,43 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Pie Chart for Income by Category
+    var incomePieCtx = document.getElementById('incomePieChart').getContext('2d');
+    var incomePieChart = new Chart(incomePieCtx, {
+        type: 'pie',
+        data: {
+            labels: {{ income_category_labels|safe }},
+            datasets: [{
+                data: {{ income_category_data|safe }},
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.2)',
+                    'rgba(153, 102, 255, 0.2)',
+                    'rgba(255, 159, 64, 0.2)',
+                    'rgba(255, 99, 132, 0.2)',
+                    'rgba(54, 162, 235, 0.2)',
+                    'rgba(255, 206, 86, 0.2)'
+                ],
+                borderColor: [
+                    'rgba(75, 192, 192, 1)',
+                    'rgba(153, 102, 255, 1)',
+                    'rgba(255, 159, 64, 1)',
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            onClick: function (evt, activeElements) {
+                if (activeElements && activeElements.length > 0) {
+                    var category = this.data.labels[activeElements[0].index];
+                    window.location.href = "{{ url_for('reports.category_transactions', category_name='') }}" + encodeURIComponent(category);
+                }
+            }
+        }
+    });
+
     // Pie Chart for Spending by Category
     var pieCtx = document.getElementById('categoryPieChart').getContext('2d');
     var pieChart = new Chart(pieCtx, {
