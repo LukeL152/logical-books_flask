@@ -102,11 +102,12 @@ def unapproved_transactions():
         else:
             t.is_duplicate = False
 
-    rule_modified_transactions = [t for t in all_transactions if t.rule_modified]
-    unmodified_transactions = [t for t in all_transactions if not t.rule_modified]
+    rule_modified_transactions = [t for t in all_transactions if t.rule_modified and not t.needs_manual_assignment]
+    unmodified_transactions = [t for t in all_transactions if not t.rule_modified and not t.needs_manual_assignment]
+    needs_manual_assignment_transactions = [t for t in all_transactions if t.needs_manual_assignment]
 
     account_choices = get_account_choices(session['client_id'])
-    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, accounts=account_choices)
+    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, needs_manual_assignment_transactions=needs_manual_assignment_transactions, accounts=account_choices)
 
 @transactions_bp.route('/delete_duplicates')
 def delete_duplicates():
@@ -298,6 +299,9 @@ def run_unapproved_rules():
             if rule.delete_transaction:
                 db.session.delete(transaction)
                 continue
+
+            if rule.flag_for_manual_assignment:
+                transaction.needs_manual_assignment = True
             
             transaction.rule_modified = True
             break  # Stop after the first matching rule
@@ -516,6 +520,7 @@ def add_transaction_rule():
             new_credit_account_id=int(request.form.get('new_credit_account_id')) if request.form.get('new_credit_account_id') else None,
             is_automatic='is_automatic' in request.form,
             delete_transaction='delete_transaction' in request.form,
+            flag_for_manual_assignment='flag_for_manual_assignment' in request.form,
             client_id=session['client_id'],
             source_account_id=int(request.form.get('source_account_id')) if request.form.get('source_account_id') else None
         )
@@ -546,6 +551,7 @@ def edit_transaction_rule(rule_id):
         rule.new_credit_account_id = int(request.form.get('new_credit_account_id')) if request.form.get('new_credit_account_id') else None
         rule.is_automatic = 'is_automatic' in request.form
         rule.delete_transaction = 'delete_transaction' in request.form
+        rule.flag_for_manual_assignment = 'flag_for_manual_assignment' in request.form
         rule.source_account_id = int(request.form.get('source_account_id')) if request.form.get('source_account_id') else None
         db.session.commit()
         flash('Transaction rule updated successfully.', 'success')

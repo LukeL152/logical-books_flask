@@ -167,6 +167,7 @@ class TransactionRule(db.Model):
     new_credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
     is_automatic = db.Column(db.Boolean, default=True)
     delete_transaction = db.Column(db.Boolean, default=False)
+    flag_for_manual_assignment = db.Column(db.Boolean, default=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'))
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
 
@@ -258,6 +259,7 @@ class Transaction(db.Model):
     debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     rule_modified = db.Column(db.Boolean, nullable=False, default=False)
+    needs_manual_assignment = db.Column(db.Boolean, nullable=False, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
     source_account = db.relationship('Account', foreign_keys=[source_account_id])
     plaid_transaction_id = db.Column(db.String(100), nullable=True, unique=True)
