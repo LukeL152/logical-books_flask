@@ -4,6 +4,7 @@
 {% block content %}
 <h1 class="mb-4">Recurring Transactions</h1>
 
+<h2 class="mb-3">Detected Recurring Transactions</h2>
 <table class="table table-striped">
     <thead>
         <tr>
@@ -19,15 +20,21 @@
         </tr>
     </thead>
     <tbody>
-        {% for transaction in recurring_transactions %}
+        {% for transaction in detected_transactions %}
         <tr>
             <form action="{{ url_for('transactions.approve_recurring_transaction') }}" method="post">
-                <td><input type="text" name="name" value="{{ transaction.name }}" class="form-control"></td>
-                <td><input type="text" name="description" value="{{ transaction.description }}" class="form-control"></td>
-                <td><input type="number" step="0.01" name="amount" value="{{ transaction.amount }}" class="form-control"></td>
-                <td><input type="text" name="frequency" value="{{ transaction.frequency }}" class="form-control"></td>
-                <td><input type="date" name="start_date" value="{{ transaction.start_date.strftime('%Y-%m-%d') }}" class="form-control"></td>
-                <td><input type="date" name="end_date" value="{{ transaction.end_date.strftime('%Y-%m-%d') if transaction.end_date else '' }}" class="form-control"></td>
+                <input type="hidden" name="name" value="{{ transaction.name }}">
+                <input type="hidden" name="description" value="{{ transaction.description }}">
+                <input type="hidden" name="amount" value="{{ transaction.amount }}">
+                <input type="hidden" name="frequency" value="{{ transaction.frequency }}">
+                <input type="hidden" name="start_date" value="{{ transaction.start_date.strftime('%Y-%m-%d') }}">
+                <input type="hidden" name="end_date" value="{{ transaction.end_date.strftime('%Y-%m-%d') if transaction.end_date else '' }}">
+                <td>{{ transaction.name }}</td>
+                <td>{{ transaction.description }}</td>
+                <td>{{ transaction.amount }}</td>
+                <td>{{ transaction.frequency }}</td>
+                <td>{{ transaction.start_date.strftime('%Y-%m-%d') }}</td>
+                <td>{{ transaction.end_date.strftime('%Y-%m-%d') if transaction.end_date else '' }}</td>
                 <td>
                     <select name="debit_account_id" class="form-control">
                         {{ render_account_options(accounts, selected_id=transaction.debit_account_id) }}
@@ -40,8 +47,43 @@
                 </td>
                 <td>
                     <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                    <a href="{{ url_for('transactions.dismiss_recurring_transaction', description=transaction.description) }}" class="btn btn-sm btn-danger">Dismiss</a>
                 </td>
             </form>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2 class="mb-3">Approved Recurring Transactions</h2>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Frequency</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Debit Account</th>
+            <th>Credit Account</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for transaction in approved_transactions %}
+        <tr>
+            <td>{{ transaction.name }}</td>
+            <td>{{ transaction.description }}</td>
+            <td>{{ transaction.amount }}</td>
+            <td>{{ transaction.frequency }}</td>
+            <td>{{ transaction.start_date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ transaction.end_date.strftime('%Y-%m-%d') if transaction.end_date else '' }}</td>
+            <td>{{ transaction.debit_account.name }}</td>
+            <td>{{ transaction.credit_account.name }}</td>
+            <td>
+                <a href="{{ url_for('transactions.delete_recurring_transaction', transaction_id=transaction.id) }}" class="btn btn-sm btn-danger">Delete</a>
+            </td>
         </tr>
         {% endfor %}
     </tbody>

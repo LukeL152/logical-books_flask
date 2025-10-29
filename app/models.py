@@ -182,18 +182,7 @@ class FinancialPeriod(db.Model):
     is_closed = db.Column(db.Boolean, nullable=False, default=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
 
-class CategoryRule(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=True)
-    keyword = db.Column(db.String(100), nullable=True)
-    condition = db.Column(db.String(20), nullable=True)
-    value = db.Column(db.Float, nullable=True)
-    category = db.Column(db.String(100), nullable=False)
-    debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    debit_account = db.relationship('Account', foreign_keys=[debit_account_id])
-    credit_account = db.relationship('Account', foreign_keys=[credit_account_id])
+
 
 
 class FixedAsset(db.Model):

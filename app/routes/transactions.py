@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import Transaction, JournalEntry, Account, CategoryRule, TransactionRule, ImportTemplate, RecurringTransaction
+from app.models import Transaction, JournalEntry, Account, TransactionRule, ImportTemplate, RecurringTransaction
 from app.utils import get_account_choices, log_audit
 from datetime import datetime
 from app.utils import get_account_choices, log_audit
@@ -437,79 +437,17 @@ def transaction_analysis_page():
     # Placeholder for transaction analysis logic
     return render_template('transaction_analysis.html')
 
-@transactions_bp.route('/category_rules')
-def category_rules():
-    rules = CategoryRule.query.filter_by(client_id=session['client_id']).order_by(CategoryRule.name).all()
-    accounts = get_account_choices(session['client_id'])
-    return render_template('category_rules.html', rules=rules, accounts=accounts)
 
-@transactions_bp.route('/add_category_rule', methods=['POST'])
-def add_category_rule():
-    name = request.form.get('name')
-    keyword = request.form.get('keyword')
-    condition = request.form.get('condition')
-    value = request.form.get('value')
-    category = request.form.get('category')
-    debit_account_id = request.form.get('debit_account_id')
-    credit_account_id = request.form.get('credit_account_id')
-
-    new_rule = CategoryRule(
-        name=name,
-        keyword=keyword,
-        condition=condition if condition else None,
-        value=float(value) if value else None,
-        category=category,
-        debit_account_id=int(debit_account_id) if debit_account_id else None,
-        credit_account_id=int(credit_account_id) if credit_account_id else None,
-        client_id=session['client_id']
-    )
-    db.session.add(new_rule)
-    db.session.commit()
-    flash('Category rule added successfully.', 'success')
-    return redirect(url_for('transactions.category_rules'))
-
-@transactions_bp.route('/edit_category_rule/<int:rule_id>', methods=['GET', 'POST'])
-def edit_category_rule(rule_id):
-    rule = CategoryRule.query.get_or_404(rule_id)
-    if rule.client_id != session.get('client_id'):
-        flash('You do not have permission to edit this rule.', 'danger')
-        return redirect(url_for('transactions.category_rules'))
-
-    if request.method == 'POST':
-        rule.name = request.form.get('name')
-        rule.keyword = request.form.get('keyword')
-        rule.condition = request.form.get('condition') if request.form.get('condition') else None
-        rule.value = float(request.form.get('value')) if request.form.get('value') else None
-        rule.category = request.form.get('category')
-        rule.debit_account_id = int(request.form.get('debit_account_id')) if request.form.get('debit_account_id') else None
-        rule.credit_account_id = int(request.form.get('credit_account_id')) if request.form.get('credit_account_id') else None
-        db.session.commit()
-        flash('Category rule updated successfully.', 'success')
-        return redirect(url_for('transactions.category_rules'))
-
-    accounts = get_account_choices(session['client_id'])
-    return render_template('edit_category_rule.html', rule=rule, accounts=accounts)
-
-@transactions_bp.route('/delete_category_rule/<int:rule_id>')
-def delete_category_rule(rule_id):
-    rule = CategoryRule.query.get_or_404(rule_id)
-    if rule.client_id != session.get('client_id'):
-        flash('You do not have permission to delete this rule.', 'danger')
-        return redirect(url_for('transactions.category_rules'))
-    db.session.delete(rule)
-    db.session.commit()
-    flash('Category rule deleted successfully.', 'success')
-    return redirect(url_for('transactions.category_rules'))
 
 @transactions_bp.route('/recurring_transactions')
 def recurring_transactions():
     from app.tasks import detect_recurring_transactions
-    recurring_transactions = detect_recurring_transactions(session['client_id'])
+    detected_transactions = detect_recurring_transactions(session['client_id'])
+    approved_transactions = RecurringTransaction.query.filter_by(client_id=session['client_id']).all()
     accounts = get_account_choices(session['client_id'])
-    return render_template('recurring_transactions.html', recurring_transactions=recurring_transactions, accounts=accounts)
+    return render_template('recurring_transactions.html', detected_transactions=detected_transactions, approved_transactions=approved_transactions, accounts=accounts)
 
 @transactions_bp.route('/approve_recurring_transaction', methods=['POST'])
-
 def approve_recurring_transaction():
     name = request.form.get('name')
     description = request.form.get('description')
@@ -534,6 +472,23 @@ def approve_recurring_transaction():
     db.session.add(new_recurring_transaction)
     db.session.commit()
     flash('Recurring transaction approved and saved.', 'success')
+    return redirect(url_for('transactions.recurring_transactions'))
+
+@transactions_bp.route('/delete_recurring_transaction/<int:transaction_id>')
+def delete_recurring_transaction(transaction_id):
+    transaction = RecurringTransaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session.get('client_id'):
+        flash('You do not have permission to delete this transaction.', 'danger')
+        return redirect(url_for('transactions.recurring_transactions'))
+    db.session.delete(transaction)
+    db.session.commit()
+    flash('Recurring transaction deleted successfully.', 'success')
+    return redirect(url_for('transactions.recurring_transactions'))
+
+@transactions_bp.route('/dismiss_recurring_transaction/<description>')
+def dismiss_recurring_transaction(description):
+    # TODO: Implement a more permanent solution for dismissing transactions
+    flash(f'Transaction "{description}" dismissed for this session.', 'info')
     return redirect(url_for('transactions.recurring_transactions'))
 
 @transactions_bp.route('/add_transaction_rule', methods=['GET', 'POST'])

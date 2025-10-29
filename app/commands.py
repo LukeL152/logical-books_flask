@@ -2,7 +2,7 @@ import click
 from flask.cli import with_appcontext
 import json
 from datetime import datetime, date
-from app.models import PlaidItem, Client, Vendor, Account, Budget, TransactionRule, CategoryRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidAccount, Transaction, JournalEntry, Role, User, Document, ImportTemplate, Depreciation, FinancialPeriod, AuditTrail
+from app.models import PlaidItem, Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidAccount, Transaction, JournalEntry, Role, User, Document, ImportTemplate, Depreciation, FinancialPeriod, AuditTrail
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
@@ -93,7 +93,7 @@ def export_data_command():
     if not os.path.exists('data_export'):
         os.makedirs('data_export')
 
-    models_to_export = [Client, Vendor, Account, Budget, TransactionRule, CategoryRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidItem, PlaidAccount, Transaction, JournalEntry]
+    models_to_export = [Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidItem, PlaidAccount, Transaction, JournalEntry]
     
     for model in models_to_export:
         # Use __tablename__ if available, otherwise use model name
@@ -172,7 +172,7 @@ def import_data_command():
             ('journal_entries', JournalEntry, {'client_id': 'client', 'debit_account_id': 'account', 'credit_account_id': 'account', 'transaction_id': 'transaction'})
             ('reconciliation', Reconciliation, {'client_id': 'client', 'account_id': 'account'})
             ('transaction_rule', TransactionRule, {'client_id': 'client', 'new_debit_account_id': 'account', 'new_credit_account_id': 'account', 'source_account_id': 'account'})
-            ('category_rule', CategoryRule, {'client_id': 'client', 'debit_account_id': 'account', 'credit_account_id': 'account'})
+            
             ('budget', Budget, {'client_id': 'client'})
             ('inventory', Inventory, {'client_id': 'client', 'product_id': 'product'})
             ('sale', Sale, {'client_id': 'client', 'product_id': 'product'})

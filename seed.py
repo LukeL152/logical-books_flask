@@ -1,4 +1,4 @@
-from app import db, Client, Role, User, Account, JournalEntry, Document, ImportTemplate, Budget, FinancialPeriod, CategoryRule, FixedAsset, Depreciation, Product, Inventory, Sale, RecurringTransaction, Transaction, AuditTrail, TransactionRule
+from app import db, Client, Role, User, Account, JournalEntry, Document, ImportTemplate, Budget, FinancialPeriod, FixedAsset, Depreciation, Product, Inventory, Sale, RecurringTransaction, Transaction, AuditTrail, TransactionRule
 def seed_data():
     db.session.add(Client(id=1, contact_name='test', business_name='test', contact_email='', contact_phone='', address='', entity_structure='', services_offered='', payment_method='', billing_cycle='', client_status='Active', notes=''))
     db.session.add(Account(id=1, name='Liabilities', type='Liability', opening_balance=0.0, category='', client_id=1, parent_id=None))

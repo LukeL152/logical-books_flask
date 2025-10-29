@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from markupsafe import Markup
 from app import db
-from app.models import TransactionRule, CategoryRule, Client, Account, Transaction
+from app.models import TransactionRule, Client, Account, Transaction
 from app.utils import get_account_choices
 from collections import OrderedDict
 
@@ -35,20 +35,7 @@ def get_categories_for_account(account_id):
     categories = db.session.query(Transaction.category).filter_by(source_account_id=account_id, client_id=session['client_id']).distinct().all()
     return json.dumps([c[0] for c in categories if c[0]])
 
-@settings_bp.route('/category_rules', methods=['GET', 'POST'])
-def category_rules():
-    if request.method == 'POST':
-        keyword = request.form['keyword']
-        category = request.form['category']
-        new_rule = CategoryRule(keyword=keyword, category=category, client_id=session['client_id'])
-        db.session.add(new_rule)
-        db.session.commit()
-        flash('Category rule created successfully.', 'success')
-        return redirect(url_for('settings.category_rules'))
-    else:
-        rules = CategoryRule.query.filter_by(client_id=session['client_id']).all()
-        account_choices = get_account_choices(session['client_id'])
-        return render_template('category_rules.html', rules=rules, accounts=account_choices)
+
 
 @settings_bp.route('/add_transaction_rule', methods=['GET', 'POST'])
 def add_transaction_rule():
