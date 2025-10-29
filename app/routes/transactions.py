@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import Transaction, JournalEntry, Account, CategoryRule, TransactionRule, ImportTemplate
+from app.models import Transaction, JournalEntry, Account, CategoryRule, TransactionRule, ImportTemplate, RecurringTransaction
+from app.utils import get_account_choices, log_audit
 from datetime import datetime
 from app.utils import get_account_choices, log_audit
 
@@ -502,8 +503,38 @@ def delete_category_rule(rule_id):
 
 @transactions_bp.route('/recurring_transactions')
 def recurring_transactions():
-    # Placeholder for recurring transactions logic
-    return render_template('recurring_transactions.html')
+    from app.tasks import detect_recurring_transactions
+    recurring_transactions = detect_recurring_transactions(session['client_id'])
+    accounts = get_account_choices(session['client_id'])
+    return render_template('recurring_transactions.html', recurring_transactions=recurring_transactions, accounts=accounts)
+
+@transactions_bp.route('/approve_recurring_transaction', methods=['POST'])
+
+def approve_recurring_transaction():
+    name = request.form.get('name')
+    description = request.form.get('description')
+    amount = float(request.form.get('amount'))
+    frequency = request.form.get('frequency')
+    start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
+    end_date = datetime.strptime(request.form.get('end_date'), '%Y-%m-%d').date() if request.form.get('end_date') else None
+    debit_account_id = int(request.form.get('debit_account_id'))
+    credit_account_id = int(request.form.get('credit_account_id'))
+
+    new_recurring_transaction = RecurringTransaction(
+        name=name,
+        description=description,
+        amount=amount,
+        frequency=frequency,
+        start_date=start_date,
+        end_date=end_date,
+        debit_account_id=debit_account_id,
+        credit_account_id=credit_account_id,
+        client_id=session['client_id']
+    )
+    db.session.add(new_recurring_transaction)
+    db.session.commit()
+    flash('Recurring transaction approved and saved.', 'success')
+    return redirect(url_for('transactions.recurring_transactions'))
 
 @transactions_bp.route('/add_transaction_rule', methods=['GET', 'POST'])
 def add_transaction_rule():
