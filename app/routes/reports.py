@@ -405,6 +405,26 @@ def delete_budget(budget_id):
     flash('Budget deleted successfully.', 'success')
     return redirect(url_for('reports.budget'))
 
+@reports_bp.route('/budget/<int:budget_id>/edit', methods=['GET', 'POST'])
+def edit_budget(budget_id):
+    budget = Budget.query.get_or_404(budget_id)
+    if budget.client_id != session.get('client_id'):
+        flash('You do not have permission to edit this budget.', 'danger')
+        return redirect(url_for('reports.budget'))
+
+    if request.method == 'POST':
+        budget.category = request.form.get('category')
+        budget.amount = request.form.get('amount')
+        budget.period = request.form.get('period')
+        budget.start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
+        db.session.commit()
+        flash('Budget updated successfully.', 'success')
+        return redirect(url_for('reports.budget'))
+
+    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense').order_by(Account.name).all()
+    categories = sorted(list(set([acc.category for acc in expense_accounts if acc.category])))
+    return render_template('edit_budget.html', budget=budget, categories=categories)
+
 @reports_bp.route('/audit_trail')
 def audit_trail():
     logs = AuditTrail.query.join(AuditTrail.user).filter_by(client_id=session['client_id']).order_by(AuditTrail.date.desc()).all()

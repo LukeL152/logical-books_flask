@@ -63,6 +63,7 @@
                 {{ "%.2f"|format(budget.remaining) }}
             </td>
             <td>
+                <a href="{{ url_for('reports.edit_budget', budget_id=budget.id) }}" class="btn btn-sm btn-primary">Edit</a>
                 <a href="{{ url_for('reports.delete_budget', budget_id=budget.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this budget?')">Delete</a>
             </td>
         </tr>

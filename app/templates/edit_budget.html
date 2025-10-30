@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">Edit Budget</h1>
+
+<form action="{{ url_for('reports.edit_budget', budget_id=budget.id) }}" method="post" class="p-3 border rounded mb-4">
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label for="category" class="form-label">Category</label>
+            <select id="category" name="category" class="form-select" required>
+                {% for category in categories %}
+                    <option value="{{ category }}" {% if category == budget.category %}selected{% endif %}>{{ category }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label for="amount" class="form-label">Amount</label>
+            <input type="number" step="0.01" id="amount" name="amount" class="form-control" value="{{ budget.amount }}" required>
+        </div>
+        <div class="col-md-3">
+            <label for="period" class="form-label">Period</label>
+            <select id="period" name="period" class="form-select" required>
+                <option value="monthly" {% if budget.period == 'monthly' %}selected{% endif %}>Monthly</option>
+                <option value="quarterly" {% if budget.period == 'quarterly' %}selected{% endif %}>Quarterly</option>
+                <option value="yearly" {% if budget.period == 'yearly' %}selected{% endif %}>Yearly</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="start_date" class="form-label">Start Date</label>
+            <input type="date" id="start_date" name="start_date" class="form-control" value="{{ budget.start_date.strftime('%Y-%m-%d') }}" required>
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="{{ url_for('reports.budget') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </div>
+</form>
+{% endblock %}
