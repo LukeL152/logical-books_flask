@@ -146,14 +146,28 @@ class ImportTemplate(db.Model):
     negate_amount = db.Column(db.Boolean, nullable=False, default=False)
     account = db.relationship('Account', backref=db.backref('import_template', uselist=False, cascade="all, delete-orphan"))
 
+budget_categories = db.Table('budget_categories',
+    db.Column('budget_id', db.Integer, db.ForeignKey('budget.id'), primary_key=True),
+    db.Column('category_id', db.Integer, db.ForeignKey('category.id'), primary_key=True)
+)
+
+class Category(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+
+
 class Budget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False, default='Budget')
-    category = db.Column(db.String(100), nullable=False)
+    categories = db.relationship('Category', secondary=budget_categories, lazy='subquery',
+        backref=db.backref('budgets', lazy=True))
     amount = db.Column(db.Float, nullable=False)
     period = db.Column(db.String(20), nullable=False, default='monthly') # monthly, quarterly, yearly
     start_date = db.Column(db.Date, nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('budget.id'), nullable=True)
+    children = db.relationship('Budget', backref=db.backref('parent', remote_side=[id]))
+    keywords = db.Column(db.Text, nullable=True)
 
 class TransactionRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -257,6 +271,6 @@ class Transaction(db.Model):
 class AuditTrail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id', name='fk_audit_trail_user_id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     action = db.Column(db.String(200), nullable=False)
     user = db.relationship('User', backref='audit_trails')

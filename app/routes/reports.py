@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, session, make_response, redirect, url_for, flash
 from app import db
-from app.models import Account, JournalEntry, Reconciliation, Budget, AuditTrail, Transaction
+from app.models import Account, JournalEntry, Reconciliation, Budget, AuditTrail, Transaction, Category
 from datetime import datetime, timedelta
 import csv
 import io
@@ -331,16 +331,45 @@ def analysis():
                            cash_at_beginning_of_period=cash_at_beginning_of_period,
                            cash_at_end_of_period=cash_at_end_of_period)
 
-@reports_bp.route('/category_transactions/<category_name>')
-def category_transactions(category_name):
-    # Placeholder for category transactions logic
-    return render_template('category_transactions.html', category_name=category_name)
+@reports_bp.route('/populate_categories')
+def populate_categories():
+    client_id = session.get('client_id')
+    if not client_id:
+        flash('Please select a client first.', 'warning')
+        return redirect(url_for('clients.clients'))
+
+    # Get categories from JournalEntry
+    journal_categories = db.session.query(JournalEntry.category).filter(
+        JournalEntry.client_id == client_id,
+        JournalEntry.category != None,
+        JournalEntry.category != ''
+    ).distinct().all()
+
+    # Get categories from Transaction
+    transaction_categories = db.session.query(Transaction.category).filter(
+        Transaction.client_id == client_id,
+        Transaction.category != None,
+        Transaction.category != ''
+    ).distinct().all()
+
+    all_categories = set([c[0] for c in journal_categories] + [c[0] for c in transaction_categories])
+
+    existing_categories = [c.name for c in Category.query.all()]
+
+    for cat_name in all_categories:
+        if cat_name not in existing_categories:
+            new_category = Category(name=cat_name)
+            db.session.add(new_category)
+    
+    db.session.commit()
+    flash('Categories populated successfully!', 'success')
+    return redirect(url_for('reports.budget'))
 
 @reports_bp.route('/budget', methods=['GET', 'POST'])
 def budget():
     if request.method == 'POST':
         name = request.form.get('name')
-        category = request.form.get('category')
+        categories = request.form.getlist('categories')
         amount = request.form.get('amount')
         period = request.form.get('period')
         start_date_str = request.form.get('start_date')
@@ -349,62 +378,102 @@ def budget():
 
         new_budget = Budget(
             name=name,
-            category=category,
             amount=amount,
             period=period,
             start_date=start_date,
-            client_id=session['client_id']
+            client_id=session['client_id'],
+            parent_id=request.form.get('parent_id') if request.form.get('parent_id') else None,
+            keywords=request.form.get('keywords')
         )
+
+        for category_id in categories:
+            category = Category.query.get(category_id)
+            if category:
+                new_budget.categories.append(category)
         db.session.add(new_budget)
         db.session.commit()
         return redirect(url_for('reports.budget'))
 
-    budgets = Budget.query.filter_by(client_id=session['client_id']).all()
-
-    for budget in budgets:
-        today = datetime.now().date()
-        if budget.period == 'monthly':
-            start_date = today.replace(day=1)
-            end_date = (start_date + timedelta(days=31)).replace(day=1) - timedelta(days=1)
-        elif budget.period == 'quarterly':
-            current_quarter = (today.month - 1) // 3 + 1
-            start_date = datetime(today.year, 3 * current_quarter - 2, 1).date()
-            end_date = (datetime(today.year, 3 * current_quarter + 1, 1).date() - timedelta(days=1)) if current_quarter < 4 else datetime(today.year, 12, 31).date()
-        elif budget.period == 'yearly':
-            start_date = today.replace(month=1, day=1)
-            end_date = today.replace(month=12, day=31)
+    def build_budget_tree(parent_budget=None):
+        if parent_budget:
+            budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=parent_budget.id).order_by(Budget.name).all()
         else:
-            start_date = budget.start_date
-            end_date = today # Default to up to today if period is weird
+            budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=None).order_by(Budget.name).all()
 
-        actual_spent_journal = db.session.query(
-            db.func.sum(JournalEntry.amount)
-        ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
-            Account.type == 'Expense',
-            JournalEntry.client_id == session['client_id'],
-            JournalEntry.category == budget.category,
-            JournalEntry.date >= start_date,
-            JournalEntry.date <= end_date
-        ).scalar() or 0.0
+        tree = []
+        for budget in budgets:
+            # Calculate actual_spent and remaining for each budget
+            today = datetime.now().date()
+            if budget.period == 'monthly':
+                start_date = today.replace(day=1)
+                end_date = (start_date + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+            elif budget.period == 'quarterly':
+                current_quarter = (today.month - 1) // 3 + 1
+                start_date = datetime(today.year, 3 * current_quarter - 2, 1).date()
+                period_end_month = 3 * current_quarter
+                period_end_year = today.year
+                if period_end_month > 12:
+                    period_end_month -= 12
+                    period_end_year += 1
+                end_date = (datetime(period_end_year, period_end_month, 1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            elif budget.period == 'yearly':
+                start_date = today.replace(month=1, day=1)
+                end_date = today.replace(month=12, day=31)
+            else:
+                start_date = budget.start_date
+                end_date = today # Default to up to today if period is weird
 
-        actual_spent_transaction = db.session.query(
-            db.func.sum(Transaction.amount)
-        ).filter(
-            Transaction.client_id == session['client_id'],
-            Transaction.category == budget.category,
-            Transaction.date >= start_date,
-            Transaction.date <= end_date,
-            Transaction.is_approved == False
-        ).scalar() or 0.0
+            budget_categories = [c.name for c in budget.categories]
+            budget_keywords = [k.strip() for k in budget.keywords.split(',')] if budget.keywords else []
 
-        actual_spent = actual_spent_journal + actual_spent_transaction
-        budget.actual_spent = actual_spent
-        budget.remaining = budget.amount - actual_spent
-    journal_categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
-    transaction_categories = [t[0] for t in db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all() if t[0]]
-    categories = sorted(list(set(journal_categories + transaction_categories)))
+            journal_filters = [
+                Account.type == 'Expense',
+                JournalEntry.client_id == session['client_id'],
+                JournalEntry.date >= start_date,
+                JournalEntry.date <= end_date
+            ]
+            if budget_categories:
+                journal_filters.append(JournalEntry.category.in_(budget_categories))
+            if budget_keywords:
+                journal_filters.append(db.or_(*[JournalEntry.description.ilike(f'%{kw}%') for kw in budget_keywords]))
 
-    return render_template('budget.html', budgets=budgets, categories=categories)
+            actual_spent_journal = db.session.query(
+                db.func.sum(JournalEntry.amount)
+            ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+                *journal_filters
+            ).scalar() or 0.0
+
+            transaction_filters = [
+                Transaction.client_id == session['client_id'],
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.is_approved == False
+            ]
+            if budget_categories:
+                transaction_filters.append(Transaction.category.in_(budget_categories))
+            if budget_keywords:
+                transaction_filters.append(db.or_(*[Transaction.description.ilike(f'%{kw}%') for kw in budget_keywords]))
+
+            actual_spent_transaction = db.session.query(
+                db.func.sum(Transaction.amount)
+            ).filter(
+                *transaction_filters
+            ).scalar() or 0.0
+
+            budget.actual_spent = actual_spent_journal + actual_spent_transaction
+            budget.remaining = budget.amount - budget.actual_spent
+
+            tree.append({
+                'budget': budget,
+                'children': build_budget_tree(budget)
+            })
+        return tree
+
+    budget_tree = build_budget_tree()
+    categories = Category.query.order_by(Category.name).all()
+    all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
+
+    return render_template('budget.html', budget_tree=budget_tree, categories=categories, all_budgets=all_budgets)
 
 @reports_bp.route('/budget/<int:budget_id>/delete', methods=['GET']) # Should be POST
 def delete_budget(budget_id):
@@ -426,17 +495,24 @@ def edit_budget(budget_id):
 
     if request.method == 'POST':
         budget.name = request.form.get('name')
-        budget.category = request.form.get('category')
         budget.amount = request.form.get('amount')
         budget.period = request.form.get('period')
         budget.start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
+        budget.parent_id = request.form.get('parent_id') if request.form.get('parent_id') else None
+        budget.keywords = request.form.get('keywords')
+
+        budget.categories.clear()
+        category_ids = request.form.getlist('categories')
+        for cat_id in category_ids:
+            category = Category.query.get(cat_id)
+            if category:
+                budget.categories.append(category)
+
         db.session.commit()
         flash('Budget updated successfully.', 'success')
         return redirect(url_for('reports.budget'))
 
-    journal_categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
-    transaction_categories = [t[0] for t in db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all() if t[0]]
-    categories = sorted(list(set(journal_categories + transaction_categories)))
+    categories = Category.query.order_by(Category.name).all()
     return render_template('edit_budget.html', budget=budget, categories=categories)
 
 @reports_bp.route('/audit_trail')

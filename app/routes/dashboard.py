@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from app import db
-from app.models import JournalEntry, Account, Budget
+from app.models import JournalEntry, Account, Budget, Category
 from datetime import datetime, timedelta
 import json
 from app.utils import get_account_tree
@@ -153,8 +153,9 @@ def dashboard():
                 period_name = str(period_start.year)
                 current_date = period_end + timedelta(days=1)
 
+            budget_categories = [c.name for c in budget.categories]
             actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
-                .filter(JournalEntry.category == budget.category) \
+                .filter(JournalEntry.category.in_(budget_categories)) \
                 .filter(JournalEntry.date >= period_start) \
                 .filter(JournalEntry.date <= period_end) \
                 .scalar() or 0
@@ -167,7 +168,7 @@ def dashboard():
             })
 
         performance_data.append({
-            'category_name': budget.category,
+            'category_name': ', '.join([c.name for c in budget.categories]),
             'period': budget.period,
             'amount': budget.amount,
             'history': history

@@ -13,11 +13,27 @@
         </div>
         <div class="col-md-4">
             <label for="category" class="form-label">Category</label>
-            <select id="category" name="category" class="form-select" required>
+            <select id="category" name="categories" class="form-select" multiple>
                 {% for category in categories %}
-                    <option value="{{ category }}">{{ category }}</option>
+                    <option value="{{ category.id }}">{{ category.name }}</option>
                 {% endfor %}
             </select>
+        </div>
+        <div class="col-12">
+            <a href="{{ url_for('reports.populate_categories') }}" class="btn btn-info mb-3">Refresh Categories</a>
+        </div>
+        <div class="col-md-4">
+            <label for="parent_id" class="form-label">Parent Budget</label>
+            <select id="parent_id" name="parent_id" class="form-select">
+                <option value="">No Parent</option>
+                {% for budget in all_budgets %}
+                    <option value="{{ budget.id }}">{{ budget.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label for="keywords" class="form-label">Keywords (comma-separated)</label>
+            <input type="text" id="keywords" name="keywords" class="form-control">
         </div>
         <div class="col-md-2">
             <label for="amount" class="form-label">Amount</label>
@@ -43,11 +59,38 @@
 
 <!-- Existing Budgets -->
 <h2 class="mt-5">Existing Budgets</h2>
+{% macro render_budget_tree(budgets, level=0) %}
+    {% for item in budgets %}
+        <tr class="budget-level-{{ level }}">
+            <td>{{ "&nbsp;&nbsp;&nbsp;" * (level|int) }}{{ item.budget.name }}</td>
+            <td>
+                {% for category in item.budget.categories %}
+                    {{ category.name }}{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </td>
+            <td>{{ item.budget.keywords }}</td>
+            <td>{{ item.budget.period }}</td>
+            <td>{{ item.budget.start_date }}</td>
+            <td class="text-end">{{ "%.2f"|format(item.budget.amount) }}</td>
+            <td class="text-end">{{ "%.2f"|format(item.budget.actual_spent) }}</td>
+            <td class="text-end {% if item.budget.remaining >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {{ "%.2f"|format(item.budget.remaining) }}
+            </td>
+            <td>
+                <a href="{{ url_for('reports.edit_budget', budget_id=item.budget.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                <a href="{{ url_for('reports.delete_budget', budget_id=item.budget.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this budget?')">Delete</a>
+            </td>
+        </tr>
+        {{ render_budget_tree(item.children, level + 1) }}
+    {% endfor %}
+{% endmacro %}
+
 <table class="table table-striped" id="budgets-table">
     <thead>
         <tr>
             <th>Name</th>
             <th>Category</th>
+            <th>Keywords</th>
             <th>Period</th>
             <th>Start Date</th>
             <th class="text-end">Budgeted</th>
@@ -57,23 +100,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for budget in budgets %}
-        <tr>
-            <td>{{ budget.name }}</td>
-            <td>{{ budget.category }}</td>
-            <td>{{ budget.period }}</td>
-            <td>{{ budget.start_date }}</td>
-            <td class="text-end">{{ "%.2f"|format(budget.amount) }}</td>
-            <td class="text-end">{{ "%.2f"|format(budget.actual_spent) }}</td>
-            <td class="text-end {% if budget.remaining >= 0 %}text-success{% else %}text-danger{% endif %}">
-                {{ "%.2f"|format(budget.remaining) }}
-            </td>
-            <td>
-                <a href="{{ url_for('reports.edit_budget', budget_id=budget.id) }}" class="btn btn-sm btn-primary">Edit</a>
-                <a href="{{ url_for('reports.delete_budget', budget_id=budget.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this budget?')">Delete</a>
-            </td>
-        </tr>
-        {% endfor %}
+        {{ render_budget_tree(budget_tree) }}
     </tbody>
 </table>
 {% endblock %}

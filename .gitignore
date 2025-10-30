@@ -32,3 +32,4 @@ gha-creds-*.json
 # Miscellaneous Files
 misc/
 SECURITY_CHECKLIST.md
+roadmaps/

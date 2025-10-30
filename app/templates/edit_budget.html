@@ -11,11 +11,26 @@
         </div>
         <div class="col-md-4">
             <label for="category" class="form-label">Category</label>
-            <select id="category" name="category" class="form-select" required>
+            <select id="category" name="categories" class="form-select" multiple>
                 {% for category in categories %}
-                    <option value="{{ category }}" {% if category == budget.category %}selected{% endif %}>{{ category }}</option>
+                    <option value="{{ category.id }}" {% if category in budget.categories %}selected{% endif %}>{{ category.name }}</option>
                 {% endfor %}
             </select>
+        </div>
+        <div class="col-md-4">
+            <label for="parent_id" class="form-label">Parent Budget</label>
+            <select id="parent_id" name="parent_id" class="form-select">
+                <option value="">No Parent</option>
+                {% for b in all_budgets %}
+                    {% if b.id != budget.id %}
+                        <option value="{{ b.id }}" {% if b.id == budget.parent_id %}selected{% endif %}>{{ b.name }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label for="keywords" class="form-label">Keywords (comma-separated)</label>
+            <input type="text" id="keywords" name="keywords" class="form-control" value="{{ budget.keywords if budget.keywords else '' }}">
         </div>
         <div class="col-md-2">
             <label for="amount" class="form-label">Amount</label>

@@ -232,16 +232,8 @@
                     }]
                 },
                 options: {
-                    onClick: function (evt, activeElements) {
-                        if (activeElements && activeElements.length > 0) {
-                            var category = this.data.labels[activeElements[0].index];
-                            window.location.href = "{{ url_for('reports.category_transactions', category_name='') }}" + encodeURIComponent(category);
-                        }
-                    }
                 }
             });
-
-            // Pie Chart for Income Breakdown
             var incomePieCtx = document.getElementById('incomePieChart').getContext('2d');
             var incomePieChart = new Chart(incomePieCtx, {
                 type: 'pie',
@@ -269,12 +261,6 @@
                     }]
                 },
                 options: {
-                    onClick: function (evt, activeElements) {
-                        if (activeElements && activeElements.length > 0) {
-                            var category = this.data.labels[activeElements[0].index];
-                            window.location.href = "{{ url_for('reports.category_transactions', category_name='') }}" + encodeURIComponent(category);
-                        }
-                    }
                 }
             });
         });
