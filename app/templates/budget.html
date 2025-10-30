@@ -85,10 +85,10 @@
     {% endfor %}
 {% endmacro %}
 
-<table class="table table-striped" id="budgets-table">
+<table class="table table-hover">
     <thead>
         <tr>
-            <th>Name</th>
+            <th style="width: 40%;">Name</th>
             <th>Category</th>
             <th>Keywords</th>
             <th>Period</th>
@@ -100,15 +100,78 @@
         </tr>
     </thead>
     <tbody>
-        {{ render_budget_tree(budget_tree) }}
+        {% for budget in budgets_data %}
+            <tr data-id="{{ budget.id }}" data-parent-id="{{ budget.parent_id or '' }}" style="display: {{ '' if budget.parent_id is none else 'none' }};">
+                <td>
+                    <span style="padding-left: {{ budget.level * 25 }}px;">
+                        {% if budget.is_parent %}
+                            <i class="bi bi-chevron-right expand-icon" style="cursor: pointer;"></i>
+                        {% else %}
+                            <i class="bi bi-dot" style="margin-left: 1.25rem;"></i>
+                        {% endif %}
+                        {{ budget.name }}
+                    </span>
+                </td>
+                <td>
+                    {% for category in budget.categories %}
+                        {{ category.name }}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                </td>
+                <td>{{ budget.keywords }}</td>
+                <td>{{ budget.period }}</td>
+                <td>{{ budget.start_date }}</td>
+                <td class="text-end">{{ "%.2f"|format(budget.amount) }}</td>
+                <td class="text-end">{{ "%.2f"|format(budget.actual_spent) }}</td>
+                <td class="text-end {% if budget.remaining >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ "%.2f"|format(budget.remaining) }}
+                </td>
+                <td>
+                    <a href="{{ url_for('reports.edit_budget', budget_id=budget.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                    <a href="{{ url_for('reports.delete_budget', budget_id=budget.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this budget?')">Delete</a>
+                </td>
+            </tr>
+        {% endfor %}
     </tbody>
 </table>
 {% endblock %}
 
 {% block scripts %}
 <script>
-$(document).ready(function() {
-    $('#budgets-table').DataTable();
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('.table');
+
+    table.addEventListener('click', function(e) {
+        if (e.target.classList.contains('expand-icon')) {
+            const row = e.target.closest('tr');
+            const budgetId = row.dataset.id;
+            const isExpanded = e.target.classList.contains('bi-chevron-down');
+
+            e.target.classList.toggle('bi-chevron-down', !isExpanded);
+            e.target.classList.toggle('bi-chevron-right', isExpanded);
+
+            const allRows = Array.from(table.querySelectorAll('tbody tr'));
+            
+            function toggleChildren(parentId, show) {
+                const children = allRows.filter(r => r.dataset.parentId === parentId);
+                children.forEach(child => {
+                    child.style.display = show ? '' : 'none';
+                    if (!show) {
+                        // when hiding, also hide grandchildren
+                        const childId = child.dataset.id;
+                        toggleChildren(childId, false);
+                        // and reset their icon
+                        const childIcon = child.querySelector('.expand-icon');
+                        if (childIcon) {
+                            childIcon.classList.remove('bi-chevron-down');
+                            childIcon.classList.add('bi-chevron-right');
+                        }
+                    }
+                });
+            }
+
+            toggleChildren(budgetId, !isExpanded);
+        }
+    });
 });
 </script>
 {% endblock %}

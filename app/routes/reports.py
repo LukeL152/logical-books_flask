@@ -394,13 +394,9 @@ def budget():
         db.session.commit()
         return redirect(url_for('reports.budget'))
 
-    def build_budget_tree(parent_budget=None, level=0):
-        if parent_budget:
-            budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=parent_budget.id).order_by(Budget.name).all()
-        else:
-            budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=None).order_by(Budget.name).all()
-
-        tree = []
+    def get_budgets_recursive(parent_id, level):
+        budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=parent_id).order_by(Budget.name).all()
+        budget_list = []
         for budget in budgets:
             # Calculate actual_spent and remaining for each budget
             today = datetime.now().date()
@@ -463,17 +459,29 @@ def budget():
             budget.actual_spent = actual_spent_journal + actual_spent_transaction
             budget.remaining = budget.amount - budget.actual_spent
 
-            tree.append({
-                'budget': budget,
-                'children': build_budget_tree(budget, level=level + 1)
+            is_parent = bool(budget.children)
+            budget_list.append({
+                'id': budget.id,
+                'name': budget.name,
+                'categories': budget.categories,
+                'keywords': budget.keywords,
+                'period': budget.period,
+                'start_date': budget.start_date,
+                'amount': budget.amount,
+                'actual_spent': budget.actual_spent,
+                'remaining': budget.remaining,
+                'parent_id': budget.parent_id,
+                'level': level,
+                'is_parent': is_parent
             })
-        return tree
+            budget_list.extend(get_budgets_recursive(budget.id, level + 1))
+        return budget_list
 
-    budget_tree = build_budget_tree(level=0)
+    budgets_data = get_budgets_recursive(None, 0)
     categories = Category.query.order_by(Category.name).all()
     all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
 
-    return render_template('budget.html', budget_tree=budget_tree, categories=categories, all_budgets=all_budgets)
+    return render_template('budget.html', budgets_data=budgets_data, categories=categories, all_budgets=all_budgets)
 
 @reports_bp.route('/budget/<int:budget_id>/delete', methods=['GET']) # Should be POST
 def delete_budget(budget_id):
