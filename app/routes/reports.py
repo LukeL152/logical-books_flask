@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, session, make_response, redirect, url_for, flash
 from app import db
-from app.models import Account, JournalEntry, Reconciliation, Budget, AuditTrail
+from app.models import Account, JournalEntry, Reconciliation, Budget, AuditTrail, Transaction
 from datetime import datetime, timedelta
 import csv
 import io
@@ -375,7 +375,7 @@ def budget():
             start_date = budget.start_date
             end_date = today # Default to up to today if period is weird
 
-        actual_spent_query = db.session.query(
+        actual_spent_journal = db.session.query(
             db.func.sum(JournalEntry.amount)
         ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
             Account.type == 'Expense',
@@ -383,14 +383,24 @@ def budget():
             JournalEntry.category == budget.category,
             JournalEntry.date >= start_date,
             JournalEntry.date <= end_date
-        )
-        
-        actual_spent = actual_spent_query.scalar() or 0.0
-        budget.actual_spent = actual_spent
-        budget.remaining = budget.amount - budget.actual_spent
+        ).scalar() or 0.0
 
-    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense').order_by(Account.name).all()
-    categories = sorted(list(set([acc.category for acc in expense_accounts if acc.category])))
+        actual_spent_transaction = db.session.query(
+            db.func.sum(Transaction.amount)
+        ).filter(
+            Transaction.client_id == session['client_id'],
+            Transaction.category == budget.category,
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            Transaction.is_approved == False
+        ).scalar() or 0.0
+
+        actual_spent = actual_spent_journal + actual_spent_transaction
+        budget.actual_spent = actual_spent
+        budget.remaining = budget.amount - actual_spent
+    journal_categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
+    transaction_categories = [t[0] for t in db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all() if t[0]]
+    categories = sorted(list(set(journal_categories + transaction_categories)))
 
     return render_template('budget.html', budgets=budgets, categories=categories)
 
@@ -421,8 +431,9 @@ def edit_budget(budget_id):
         flash('Budget updated successfully.', 'success')
         return redirect(url_for('reports.budget'))
 
-    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense').order_by(Account.name).all()
-    categories = sorted(list(set([acc.category for acc in expense_accounts if acc.category])))
+    journal_categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
+    transaction_categories = [t[0] for t in db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all() if t[0]]
+    categories = sorted(list(set(journal_categories + transaction_categories)))
     return render_template('edit_budget.html', budget=budget, categories=categories)
 
 @reports_bp.route('/audit_trail')
