@@ -8,6 +8,10 @@
 <form action="{{ url_for('reports.budget') }}" method="post" class="p-3 border rounded mb-4">
     <div class="row g-3">
         <div class="col-md-4">
+            <label for="name" class="form-label">Name</label>
+            <input type="text" id="name" name="name" class="form-control" required>
+        </div>
+        <div class="col-md-4">
             <label for="category" class="form-label">Category</label>
             <select id="category" name="category" class="form-select" required>
                 {% for category in categories %}
@@ -42,6 +46,7 @@
 <table class="table table-striped" id="budgets-table">
     <thead>
         <tr>
+            <th>Name</th>
             <th>Category</th>
             <th>Period</th>
             <th>Start Date</th>
@@ -54,6 +59,7 @@
     <tbody>
         {% for budget in budgets %}
         <tr>
+            <td>{{ budget.name }}</td>
             <td>{{ budget.category }}</td>
             <td>{{ budget.period }}</td>
             <td>{{ budget.start_date }}</td>

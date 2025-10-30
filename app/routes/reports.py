@@ -339,6 +339,7 @@ def category_transactions(category_name):
 @reports_bp.route('/budget', methods=['GET', 'POST'])
 def budget():
     if request.method == 'POST':
+        name = request.form.get('name')
         category = request.form.get('category')
         amount = request.form.get('amount')
         period = request.form.get('period')
@@ -347,6 +348,7 @@ def budget():
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
 
         new_budget = Budget(
+            name=name,
             category=category,
             amount=amount,
             period=period,
@@ -423,6 +425,7 @@ def edit_budget(budget_id):
         return redirect(url_for('reports.budget'))
 
     if request.method == 'POST':
+        budget.name = request.form.get('name')
         budget.category = request.form.get('category')
         budget.amount = request.form.get('amount')
         budget.period = request.form.get('period')

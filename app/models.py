@@ -148,6 +148,7 @@ class ImportTemplate(db.Model):
 
 class Budget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, default='Budget')
     category = db.Column(db.String(100), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     period = db.Column(db.String(20), nullable=False, default='monthly') # monthly, quarterly, yearly
