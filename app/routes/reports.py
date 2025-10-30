@@ -394,7 +394,7 @@ def budget():
         db.session.commit()
         return redirect(url_for('reports.budget'))
 
-    def build_budget_tree(parent_budget=None):
+    def build_budget_tree(parent_budget=None, level=0):
         if parent_budget:
             budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=parent_budget.id).order_by(Budget.name).all()
         else:
@@ -465,11 +465,11 @@ def budget():
 
             tree.append({
                 'budget': budget,
-                'children': build_budget_tree(budget)
+                'children': build_budget_tree(budget, level=level + 1)
             })
         return tree
 
-    budget_tree = build_budget_tree()
+    budget_tree = build_budget_tree(level=0)
     categories = Category.query.order_by(Category.name).all()
     all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
 
@@ -513,7 +513,8 @@ def edit_budget(budget_id):
         return redirect(url_for('reports.budget'))
 
     categories = Category.query.order_by(Category.name).all()
-    return render_template('edit_budget.html', budget=budget, categories=categories)
+    all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
+    return render_template('edit_budget.html', budget=budget, categories=categories, all_budgets=all_budgets)
 
 @reports_bp.route('/audit_trail')
 def audit_trail():
