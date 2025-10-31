@@ -419,48 +419,53 @@ def budget():
                 start_date = budget.start_date
                 end_date = today # Default to up to today if period is weird
 
-            budget_categories = [c.name for c in budget.categories]
-            budget_keywords = [k.strip() for k in budget.keywords.split(',')] if budget.keywords else []
+            # Calculate actual_spent for each budget
+            actual_spent = 0.0
+            if budget.children:
+                # If it has children, actual_spent is the sum of children's actual_spent
+                # This will be calculated recursively when children are processed
+                # For now, we just need to ensure the children are processed
+                pass # Actual spent will be aggregated from children later
+            else:
+                # If it has no children, calculate actual_spent based on its own criteria
+                budget_categories = [c.name for c in budget.categories]
+                budget_keywords = [k.strip() for k in budget.keywords.split(',')] if budget.keywords else []
 
-            journal_filters = [
-                Account.type == 'Expense',
-                JournalEntry.client_id == session['client_id'],
-                JournalEntry.date >= start_date,
-                JournalEntry.date <= end_date
-            ]
-            if budget_categories:
-                journal_filters.append(JournalEntry.category.in_(budget_categories))
-            if budget_keywords:
-                journal_filters.append(db.or_(*[JournalEntry.description.ilike(f'%{kw}%') for kw in budget_keywords]))
+                if budget_categories or budget_keywords:
+                    journal_filters = [
+                        JournalEntry.client_id == session['client_id'],
+                        JournalEntry.date >= start_date,
+                        JournalEntry.date <= end_date,
+                        Account.type == 'Expense'
+                    ]
+                    
+                    category_conditions = []
+                    if budget_categories:
+                        category_conditions.append(JournalEntry.category.in_(budget_categories))
 
-            actual_spent_journal = db.session.query(
-                db.func.sum(JournalEntry.amount)
-            ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
-                *journal_filters
-            ).scalar() or 0.0
+                    keyword_conditions = []
+                    if budget_keywords:
+                        keyword_conditions.append(db.or_(*[JournalEntry.description.ilike(f'%{kw}%') for kw in budget_keywords]))
 
-            transaction_filters = [
-                Transaction.client_id == session['client_id'],
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                Transaction.is_approved == False
-            ]
-            if budget_categories:
-                transaction_filters.append(Transaction.category.in_(budget_categories))
-            if budget_keywords:
-                transaction_filters.append(db.or_(*[Transaction.description.ilike(f'%{kw}%') for kw in budget_keywords]))
+                    combined_conditions = []
+                    if category_conditions:
+                        combined_conditions.append(db.or_(*category_conditions))
+                    if keyword_conditions:
+                        combined_conditions.append(db.or_(*keyword_conditions))
 
-            actual_spent_transaction = db.session.query(
-                db.func.sum(Transaction.amount)
-            ).filter(
-                *transaction_filters
-            ).scalar() or 0.0
+                    final_filters = journal_filters
+                    if combined_conditions:
+                        final_filters.append(db.or_(*combined_conditions))
 
-            budget.actual_spent = actual_spent_journal + actual_spent_transaction
+                    actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
+                        .join(Account, JournalEntry.debit_account_id == Account.id) \
+                        .filter(*final_filters).scalar() or 0.0
+
+            budget.actual_spent = actual_spent
             budget.remaining = budget.amount - budget.actual_spent
 
             is_parent = bool(budget.children)
-            budget_list.append({
+            budget_data = {
                 'id': budget.id,
                 'name': budget.name,
                 'categories': budget.categories,
@@ -473,8 +478,17 @@ def budget():
                 'parent_id': budget.parent_id,
                 'level': level,
                 'is_parent': is_parent
-            })
-            budget_list.extend(get_budgets_recursive(budget.id, level + 1))
+            }
+            budget_list.append(budget_data)
+            
+            # After processing the current budget, recursively process its children
+            children_data = get_budgets_recursive(budget.id, level + 1)
+            budget_list.extend(children_data)
+
+            # Aggregate actual_spent from children if this is a parent budget
+            if budget.children:
+                budget_data['actual_spent'] += sum(child_item['actual_spent'] for child_item in children_data if child_item['parent_id'] == budget.id)
+                budget_data['remaining'] = budget_data['amount'] - budget_data['actual_spent']
         return budget_list
 
     budgets_data = get_budgets_recursive(None, 0)

@@ -127,9 +127,19 @@ def dashboard():
         liability_balances[account.name] = account.opening_balance + credits - debits
 
     # Budget performance data
-    budgets = Budget.query.filter_by(client_id=session['client_id']).all()
+    def get_all_descendants(budget):
+        descendants = []
+        for child in budget.children:
+            descendants.append(child)
+            descendants.extend(get_all_descendants(child))
+        return descendants
+
+    budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=None).all()
     performance_data = []
     for budget in budgets:
+        all_budgets_in_tree = get_all_descendants(budget)
+        total_budgeted = budget.amount + sum(b.amount for b in all_budgets_in_tree)
+
         history = []
         today = datetime.now().date()
         current_date = budget.start_date
@@ -153,24 +163,57 @@ def dashboard():
                 period_name = str(period_start.year)
                 current_date = period_end + timedelta(days=1)
 
-            budget_categories = [c.name for c in budget.categories]
-            actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
-                .filter(JournalEntry.category.in_(budget_categories)) \
-                .filter(JournalEntry.date >= period_start) \
-                .filter(JournalEntry.date <= period_end) \
-                .scalar() or 0
+            all_categories = []
+            all_keywords = []
+            for b in all_budgets_in_tree:
+                for c in b.categories:
+                    all_categories.append(c.name)
+                if b.keywords:
+                    all_keywords.extend([k.strip() for k in b.keywords.split(',')])
+
+            actual_spent = 0
+            if all_categories or all_keywords:
+                base_filters = [
+                    JournalEntry.client_id == session['client_id'],
+                    JournalEntry.date >= period_start,
+                    JournalEntry.date <= period_end,
+                    Account.type == 'Expense' # This filter should always apply
+                ]
+
+                category_conditions = []
+                if all_categories:
+                    category_conditions.append(JournalEntry.category.in_(all_categories))
+
+                keyword_conditions = []
+                if all_keywords:
+                    keyword_conditions.append(db.or_(*[JournalEntry.description.ilike(f'%{kw}%') for kw in all_keywords]))
+
+                # Combine category and keyword conditions with OR
+                combined_conditions = []
+                if category_conditions:
+                    combined_conditions.append(db.or_(*category_conditions))
+                if keyword_conditions:
+                    combined_conditions.append(db.or_(*keyword_conditions))
+
+                final_filters = base_filters
+                if combined_conditions:
+                    final_filters.append(db.or_(*combined_conditions))
+
+                actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
+                    .join(Account, JournalEntry.debit_account_id == Account.id) \
+                    .filter(*final_filters).scalar() or 0
 
             history.append({
                 'period_name': period_name,
-                'budgeted': budget.amount,
+                'budgeted': total_budgeted,
                 'actual': actual_spent,
-                'difference': budget.amount - actual_spent
+                'difference': total_budgeted - actual_spent
             })
 
         performance_data.append({
-            'category_name': ', '.join([c.name for c in budget.categories]),
+            'name': budget.name,
             'period': budget.period,
-            'amount': budget.amount,
+            'amount': total_budgeted,
             'history': history
         })
 
