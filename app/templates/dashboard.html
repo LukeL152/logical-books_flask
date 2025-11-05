@@ -62,6 +62,60 @@
                 </div>
             </div>
 
+            <!-- Average KPIs -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Average Daily Income</h5>
+                            <p class="card-text fs-4 text-success">${{ "%.2f"|format(avg_daily_income) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Average Daily Expense</h5>
+                            <p class="card-text fs-4 text-danger">${{ "%.2f"|format(avg_daily_expense) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Average Daily Net Income</h5>
+                            <p class="card-text fs-4 {% if avg_daily_net_income >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(avg_daily_net_income) }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Average Monthly Income</h5>
+                            <p class="card-text fs-4 text-success">${{ "%.2f"|format(avg_monthly_income) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Average Monthly Expense</h5>
+                            <p class="card-text fs-4 text-danger">${{ "%.2f"|format(avg_monthly_expense) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Average Monthly Net Income</h5>
+                            <p class="card-text fs-4 {% if avg_monthly_net_income >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(avg_monthly_net_income) }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Charts -->
             <div class="row mb-4">
                 <div class="col-md-6">
@@ -131,6 +185,87 @@
             </div>
         </div>
         <div class="tab-pane fade" id="budget" role="tabpanel" aria-labelledby="budget-tab">
+            <div class="mb-4 mt-4">
+                <a href="{{ url_for('dashboard.dashboard', period='ytd', tab='budget') }}" class="btn btn-outline-primary">YTD</a>
+                <a href="{{ url_for('dashboard.dashboard', period='current_month', tab='budget') }}" class="btn btn-outline-primary">Current Month</a>
+                <a href="{{ url_for('dashboard.dashboard', period='last_3_months', tab='budget') }}" class="btn btn-outline-primary">Last 3 Months</a>
+                <a href="{{ url_for('dashboard.dashboard', period='last_6_months', tab='budget') }}" class="btn btn-outline-primary">Last 6 Months</a>
+            </div>
+            <form action="{{ url_for('dashboard.dashboard') }}" method="post" class="row g-3 mb-4 mt-4">
+                <div class="col-md-4">
+                    <label for="start_date_budget" class="form-label">Start Date</label>
+                    <input type="date" id="start_date_budget" name="start_date" class="form-control" value="{{ start_date }}">
+                </div>
+                <div class="col-md-4">
+                    <label for="end_date_budget" class="form-label">End Date</label>
+                    <input type="date" id="end_date_budget" name="end_date" class="form-control" value="{{ end_date }}">
+                </div>
+                <div class="col-md-4 align-self-end">
+                    <button type="submit" class="btn btn-primary">Apply Filter</button>
+                </div>
+            </form>
+
+            <h3 class="mt-4">Overall Budget Health ({{ start_date }} to {{ end_date }})</h3>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Budgeted</h5>
+                            <p class="card-text fs-4">${{ "%.2f"|format(overall_budgeted) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Actual</h5>
+                            <p class="card-text fs-4">${{ "%.2f"|format(overall_actual) }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Overall Difference</h5>
+                            <p class="card-text fs-4 {% if overall_difference >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(overall_difference) }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">Top Under Budget</div>
+                        <ul class="list-group list-group-flush">
+                            {% for budget in top_under_budget %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    {{ budget.name }}
+                                    <span class="badge bg-success rounded-pill">${{ "%.2f"|format(budget.difference) }}</span>
+                                </li>
+                            {% else %}
+                                <li class="list-group-item">No budgets under budget.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">Top Over Budget</div>
+                        <ul class="list-group list-group-flush">
+                            {% for budget in top_over_budget %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    {{ budget.name }}
+                                    <span class="badge bg-danger rounded-pill">${{ "%.2f"|format(budget.difference) }}</span>
+                                </li>
+                            {% else %}
+                                <li class="list-group-item">No budgets over budget.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             {% for item in performance_data %}
             <div class="card mb-4">
                 <div class="card-header">
@@ -164,6 +299,9 @@
                             </table>
                         </div>
                     </div>
+                    <div class="mt-3 text-end">
+                        <a href="{{ url_for('reports.budget_analysis', budget_id=item.id) }}" class="btn btn-info btn-sm">Analyze Budget</a>
+                    </div>
                 </div>
             </div>
             {% endfor %}
@@ -175,6 +313,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tab = urlParams.get('tab');
+            if (tab === 'budget') {
+                const budgetTab = new bootstrap.Tab(document.getElementById('budget-tab'));
+                budgetTab.show();
+            }
+
             // Bar Chart for Income vs Expense
             var barCtx = document.getElementById('incomeExpenseBarChart').getContext('2d');
             var barChart = new Chart(barCtx, {
@@ -199,6 +344,22 @@
                     scales: {
                         y: {
                             beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
                         }
                     }
                 }
@@ -232,6 +393,23 @@
                     }]
                 },
                 options: {
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    let value = context.parsed || 0;
+                                    let sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    let percentage = (value / sum * 100).toFixed(2) + '%';
+                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) + ' (' + percentage + ')';
+                                    return label;
+                                }
+                            }
+                        }
+                    }
                 }
             });
             var incomePieCtx = document.getElementById('incomePieChart').getContext('2d');
@@ -261,6 +439,23 @@
                     }]
                 },
                 options: {
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    let value = context.parsed || 0;
+                                    let sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    let percentage = (value / sum * 100).toFixed(2) + '%';
+                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) + ' (' + percentage + ')';
+                                    return label;
+                                }
+                            }
+                        }
+                    }
                 }
             });
         });

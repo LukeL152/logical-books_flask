@@ -1,11 +1,12 @@
-from flask import Blueprint, render_template, request, session, make_response, redirect, url_for, flash
+from flask import Blueprint, render_template, request, session, make_response, redirect, url_for, flash, jsonify
 from app import db
-from app.models import Account, JournalEntry, Reconciliation, Budget, AuditTrail, Transaction, Category
+from app.models import Account, JournalEntries, Reconciliation, Budget, AuditTrail, Transaction, Category
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 import csv
 import io
 import json
-from app.utils import get_account_tree
+from app.utils import get_account_tree, get_budgets_actual_spent, get_num_periods
 
 reports_bp = Blueprint('reports', __name__)
 
@@ -80,8 +81,8 @@ def statement_of_cash_flows():
     # A more advanced implementation would allow for date range filtering.
 
     # Net Income
-    revenue = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(Account.type == 'Revenue', JournalEntry.client_id == session['client_id']).scalar() or 0
-    expenses = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == session['client_id']).scalar() or 0
+    revenue = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.credit_account_id == Account.id).filter(Account.type == 'Revenue', JournalEntries.client_id == session['client_id']).scalar() or 0
+    expenses = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntries.client_id == session['client_id']).scalar() or 0
     net_income = revenue - expenses
 
     # Depreciation
@@ -90,22 +91,22 @@ def statement_of_cash_flows():
     # Change in Accounts Receivable
     ar_accounts = Account.query.filter_by(type='Accounts Receivable', client_id=session['client_id']).all()
     ar_balance = sum(acc.opening_balance for acc in ar_accounts)
-    ar_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
-    ar_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
+    ar_debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
+    ar_credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id.in_([acc.id for acc in ar_accounts])).scalar() or 0
     change_in_accounts_receivable = (ar_balance + ar_debits - ar_credits) - ar_balance
 
     # Change in Inventory
     inventory_accounts = Account.query.filter_by(type='Inventory', client_id=session['client_id']).all()
     inventory_balance = sum(acc.opening_balance for acc in inventory_accounts)
-    inventory_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
-    inventory_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
+    inventory_debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
+    inventory_credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id.in_([acc.id for acc in inventory_accounts])).scalar() or 0
     change_in_inventory = (inventory_balance + inventory_debits - inventory_credits) - inventory_balance
 
     # Change in Accounts Payable
     ap_accounts = Account.query.filter_by(type='Accounts Payable', client_id=session['client_id']).all()
     ap_balance = sum(acc.opening_balance for acc in ap_accounts)
-    ap_debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
-    ap_credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
+    ap_debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
+    ap_credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id.in_([acc.id for acc in ap_accounts])).scalar() or 0
     change_in_accounts_payable = (ap_balance + ap_credits - ap_debits) - ap_balance
 
     net_cash_from_operating_activities = net_income + depreciation - change_in_accounts_receivable - change_in_inventory + change_in_accounts_payable
@@ -163,16 +164,16 @@ def analysis():
 
     # --- Spending by Category (Period 1) ---
     spending_by_category_query = db.session.query(
-        JournalEntry.category,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
-        JournalEntry.client_id == client_id,
-        JournalEntry.date >= start_date_1,
-        JournalEntry.date <= end_date_1,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date_1,
+        JournalEntries.date <= end_date_1,
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category).order_by(db.func.sum(JournalEntries.amount).desc())
 
     spending_by_category = spending_by_category_query.all()
     category_labels = json.dumps([item.category for item in spending_by_category])
@@ -180,16 +181,16 @@ def analysis():
 
     # --- Income by Category (Period 1) ---
     income_by_category_query = db.session.query(
-        JournalEntry.category,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.credit_account_id == Account.id).filter(
         Account.type == 'Revenue',
-        JournalEntry.client_id == client_id,
-        JournalEntry.date >= start_date_1,
-        JournalEntry.date <= end_date_1,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date_1,
+        JournalEntries.date <= end_date_1,
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category).order_by(db.func.sum(JournalEntries.amount).desc())
 
     income_by_category = income_by_category_query.all()
     income_category_labels = json.dumps([item.category for item in income_by_category])
@@ -203,21 +204,21 @@ def analysis():
     category_comparison_data_2 = []
 
     for category in top_categories:
-        total_1 = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        total_1 = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(
             Account.type == 'Expense',
-            JournalEntry.client_id == client_id,
-            JournalEntry.date >= start_date_1,
-            JournalEntry.date <= end_date_1,
-            JournalEntry.category == category
+            JournalEntries.client_id == client_id,
+            JournalEntries.date >= start_date_1,
+            JournalEntries.date <= end_date_1,
+            JournalEntries.category == category
         ).scalar() or 0
         category_comparison_data_1.append(total_1)
 
-        total_2 = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        total_2 = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(
             Account.type == 'Expense',
-            JournalEntry.client_id == client_id,
-            JournalEntry.date >= start_date_2,
-            JournalEntry.date <= end_date_2,
-            JournalEntry.category == category
+            JournalEntries.client_id == client_id,
+            JournalEntries.date >= start_date_2,
+            JournalEntries.date <= end_date_2,
+            JournalEntries.category == category
         ).scalar() or 0
         category_comparison_data_2.append(total_2)
 
@@ -228,23 +229,23 @@ def analysis():
     # --- Income vs. Expense ---
     # Monthly data for line chart (similar to dashboard)
     income_by_month_query = db.session.query(
-        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        db.func.strftime('%Y-%m', JournalEntries.date).label('month'),
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.credit_account_id == Account.id).filter(
         Account.type.in_(['Revenue', 'Income']),
-        JournalEntry.client_id == client_id,
-        JournalEntry.date >= start_date_1, # Using Period 1 for this chart
-        JournalEntry.date <= end_date_1
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date_1, # Using Period 1 for this chart
+        JournalEntries.date <= end_date_1
     ).group_by('month')
 
     expense_by_month_query = db.session.query(
-        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        db.func.strftime('%Y-%m', JournalEntries.date).label('month'),
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
-        JournalEntry.client_id == client_id,
-        JournalEntry.date >= start_date_1, # Using Period 1 for this chart
-        JournalEntry.date <= end_date_1
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date_1, # Using Period 1 for this chart
+        JournalEntries.date <= end_date_1
     ).group_by('month')
 
     income_by_month = {r.month: r.total for r in income_by_month_query.all()}
@@ -258,8 +259,8 @@ def analysis():
 
     # --- Cash Flow Statement (using Period 1 for now) ---
     # Net Income
-    revenue = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.credit_account_id == Account.id).filter(Account.type.in_(['Revenue', 'Income']), JournalEntry.client_id == client_id, JournalEntry.date >= start_date_1, JournalEntry.date <= end_date_1).scalar() or 0
-    expenses = db.session.query(db.func.sum(JournalEntry.amount)).join(Account, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == client_id, JournalEntry.date >= start_date_1, JournalEntry.date <= end_date_1).scalar() or 0
+    revenue = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.credit_account_id == Account.id).filter(Account.type.in_(['Revenue', 'Income']), JournalEntries.client_id == client_id, JournalEntries.date >= start_date_1, JournalEntries.date <= end_date_1).scalar() or 0
+    expenses = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntries.client_id == client_id, JournalEntries.date >= start_date_1, JournalEntries.date <= end_date_1).scalar() or 0
     net_income = revenue - expenses
 
     # Depreciation (Placeholder)
@@ -267,20 +268,20 @@ def analysis():
 
     # Change in Accounts Receivable
     ar_accounts = Account.query.filter_by(type='Accounts Receivable', client_id=client_id).all()
-    ar_balance_start = sum(db.session.query(db.func.sum(JournalEntry.amount)).filter(db.or_(JournalEntry.debit_account_id == acc.id, JournalEntry.credit_account_id == acc.id), JournalEntry.client_id == client_id, JournalEntry.date < start_date_1).scalar() or 0 for acc in ar_accounts)
-    ar_balance_end = sum(db.session.query(db.func.sum(JournalEntry.amount)).filter(db.or_(JournalEntry.debit_account_id == acc.id, JournalEntry.credit_account_id == acc.id), JournalEntry.client_id == client_id, JournalEntry.date <= end_date_1).scalar() or 0 for acc in ar_accounts)
+    ar_balance_start = sum(db.session.query(db.func.sum(JournalEntries.amount)).filter(db.or_(JournalEntries.debit_account_id == acc.id, JournalEntries.credit_account_id == acc.id), JournalEntries.client_id == client_id, JournalEntries.date < start_date_1).scalar() or 0 for acc in ar_accounts)
+    ar_balance_end = sum(db.session.query(db.func.sum(JournalEntries.amount)).filter(db.or_(JournalEntries.debit_account_id == acc.id, JournalEntries.credit_account_id == acc.id), JournalEntries.client_id == client_id, JournalEntries.date <= end_date_1).scalar() or 0 for acc in ar_accounts)
     change_in_accounts_receivable = ar_balance_end - ar_balance_start
 
     # Change in Inventory
     inventory_accounts = Account.query.filter_by(type='Inventory', client_id=client_id).all()
-    inventory_balance_start = sum(db.session.query(db.func.sum(JournalEntry.amount)).filter(db.or_(JournalEntry.debit_account_id == acc.id, JournalEntry.credit_account_id == acc.id), JournalEntry.client_id == client_id, JournalEntry.date < start_date_1).scalar() or 0 for acc in inventory_accounts)
-    inventory_balance_end = sum(db.session.query(db.func.sum(JournalEntry.amount)).filter(db.or_(JournalEntry.debit_account_id == acc.id, JournalEntry.credit_account_id == acc.id), JournalEntry.client_id == client_id, JournalEntry.date <= end_date_1).scalar() or 0 for acc in inventory_accounts)
+    inventory_balance_start = sum(db.session.query(db.func.sum(JournalEntries.amount)).filter(db.or_(JournalEntries.debit_account_id == acc.id, JournalEntries.credit_account_id == acc.id), JournalEntries.client_id == client_id, JournalEntries.date < start_date_1).scalar() or 0 for acc in inventory_accounts)
+    inventory_balance_end = sum(db.session.query(db.func.sum(JournalEntries.amount)).filter(db.or_(JournalEntries.debit_account_id == acc.id, JournalEntries.credit_account_id == acc.id), JournalEntries.client_id == client_id, JournalEntries.date <= end_date_1).scalar() or 0 for acc in inventory_accounts)
     change_in_inventory = inventory_balance_end - inventory_balance_start
 
     # Change in Accounts Payable
     ap_accounts = Account.query.filter_by(type='Accounts Payable', client_id=client_id).all()
-    ap_balance_start = sum(db.session.query(db.func.sum(JournalEntry.amount)).filter(db.or_(JournalEntry.debit_account_id == acc.id, JournalEntry.credit_account_id == acc.id), JournalEntry.client_id == client_id, JournalEntry.date < start_date_1).scalar() or 0 for acc in ap_accounts)
-    ap_balance_end = sum(db.session.query(db.func.sum(JournalEntry.amount)).filter(db.or_(JournalEntry.debit_account_id == acc.id, JournalEntry.credit_account_id == acc.id), JournalEntry.client_id == client_id, JournalEntry.date <= end_date_1).scalar() or 0 for acc in ap_accounts)
+    ap_balance_start = sum(db.session.query(db.func.sum(JournalEntries.amount)).filter(db.or_(JournalEntries.debit_account_id == acc.id, JournalEntries.credit_account_id == acc.id), JournalEntries.client_id == client_id, JournalEntries.date < start_date_1).scalar() or 0 for acc in ap_accounts)
+    ap_balance_end = sum(db.session.query(db.func.sum(JournalEntries.amount)).filter(db.or_(JournalEntries.debit_account_id == acc.id, JournalEntries.credit_account_id == acc.id), JournalEntries.client_id == client_id, JournalEntries.date <= end_date_1).scalar() or 0 for acc in ap_accounts)
     change_in_accounts_payable = ap_balance_end - ap_balance_start
 
     net_cash_from_operating_activities = net_income + depreciation - change_in_accounts_receivable - change_in_inventory + change_in_accounts_payable
@@ -331,173 +332,101 @@ def analysis():
                            cash_at_beginning_of_period=cash_at_beginning_of_period,
                            cash_at_end_of_period=cash_at_end_of_period)
 
-@reports_bp.route('/populate_categories')
-def populate_categories():
-    client_id = session.get('client_id')
-    if not client_id:
-        flash('Please select a client first.', 'warning')
-        return redirect(url_for('clients.clients'))
 
-    # Get categories from JournalEntry
-    journal_categories = db.session.query(JournalEntry.category).filter(
-        JournalEntry.client_id == client_id,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).distinct().all()
-
-    # Get categories from Transaction
-    transaction_categories = db.session.query(Transaction.category).filter(
-        Transaction.client_id == client_id,
-        Transaction.category != None,
-        Transaction.category != ''
-    ).distinct().all()
-
-    all_categories = set([c[0] for c in journal_categories] + [c[0] for c in transaction_categories])
-
-    existing_categories = [c.name for c in Category.query.all()]
-
-    for cat_name in all_categories:
-        if cat_name not in existing_categories:
-            new_category = Category(name=cat_name)
-            db.session.add(new_category)
-    
-    db.session.commit()
-    flash('Categories populated successfully!', 'success')
-    return redirect(url_for('reports.budget'))
 
 @reports_bp.route('/budget', methods=['GET', 'POST'])
 def budget():
     if request.method == 'POST':
         name = request.form.get('name')
-        categories = request.form.getlist('categories')
         amount = request.form.get('amount')
         period = request.form.get('period')
         start_date_str = request.form.get('start_date')
         
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
 
+        if period == 'monthly':
+            end_date = start_date + relativedelta(months=1) - timedelta(days=1)
+        elif period == 'quarterly':
+            end_date = start_date + relativedelta(months=3) - timedelta(days=1)
+        elif period == 'yearly':
+            end_date = start_date + relativedelta(years=1) - timedelta(days=1)
+        else:
+            end_date = start_date + relativedelta(months=1) - timedelta(days=1)
+
         new_budget = Budget(
             name=name,
             amount=amount,
             period=period,
             start_date=start_date,
+            end_date=end_date,
             client_id=session['client_id'],
-            parent_id=request.form.get('parent_id') if request.form.get('parent_id') else None,
-            keywords=request.form.get('keywords')
+            parent_id=request.form.get('parent_id') if request.form.get('parent_id') else None
         )
 
-        for category_id in categories:
-            category = Category.query.get(category_id)
-            if category:
-                new_budget.categories.append(category)
+        category_names = request.form.getlist('categories')
+        for cat_name in category_names:
+            category = Category.query.filter_by(name=cat_name, client_id=session['client_id']).first()
+            if not category:
+                category = Category(name=cat_name, client_id=session['client_id'])
+                db.session.add(category)
+            new_budget.categories.append(category)
+
         db.session.add(new_budget)
         db.session.commit()
         return redirect(url_for('reports.budget'))
 
-    def get_budgets_recursive(parent_id, level):
-        budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=parent_id).order_by(Budget.name).all()
-        budget_list = []
-        for budget in budgets:
-            # Calculate actual_spent and remaining for each budget
-            today = datetime.now().date()
-            if budget.period == 'monthly':
-                start_date = today.replace(day=1)
-                end_date = (start_date + timedelta(days=31)).replace(day=1) - timedelta(days=1)
-            elif budget.period == 'quarterly':
-                current_quarter = (today.month - 1) // 3 + 1
-                start_date = datetime(today.year, 3 * current_quarter - 2, 1).date()
-                period_end_month = 3 * current_quarter
-                period_end_year = today.year
-                if period_end_month > 12:
-                    period_end_month -= 12
-                    period_end_year += 1
-                end_date = (datetime(period_end_year, period_end_month, 1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            elif budget.period == 'yearly':
-                start_date = today.replace(month=1, day=1)
-                end_date = today.replace(month=12, day=31)
-            else:
-                start_date = budget.start_date
-                end_date = today # Default to up to today if period is weird
+    def get_budget_level(budget, all_budgets):
+        level = 0
+        parent = budget.parent
+        while parent:
+            level += 1
+            parent = parent.parent
+        return level
 
-            # Calculate actual_spent for each budget
-            actual_spent = 0.0
-            if budget.children:
-                # If it has children, actual_spent is the sum of children's actual_spent
-                # This will be calculated recursively when children are processed
-                # For now, we just need to ensure the children are processed
-                pass # Actual spent will be aggregated from children later
-            else:
-                # If it has no children, calculate actual_spent based on its own criteria
-                budget_categories = [c.name for c in budget.categories]
-                budget_keywords = [k.strip() for k in budget.keywords.split(',')] if budget.keywords else []
-
-                if budget_categories or budget_keywords:
-                    journal_filters = [
-                        JournalEntry.client_id == session['client_id'],
-                        JournalEntry.date >= start_date,
-                        JournalEntry.date <= end_date,
-                        Account.type == 'Expense'
-                    ]
-                    
-                    category_conditions = []
-                    if budget_categories:
-                        category_conditions.append(JournalEntry.category.in_(budget_categories))
-
-                    keyword_conditions = []
-                    if budget_keywords:
-                        keyword_conditions.append(db.or_(*[JournalEntry.description.ilike(f'%{kw}%') for kw in budget_keywords]))
-
-                    combined_conditions = []
-                    if category_conditions:
-                        combined_conditions.append(db.or_(*category_conditions))
-                    if keyword_conditions:
-                        combined_conditions.append(db.or_(*keyword_conditions))
-
-                    final_filters = journal_filters
-                    if combined_conditions:
-                        final_filters.append(db.or_(*combined_conditions))
-
-                    actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
-                        .join(Account, JournalEntry.debit_account_id == Account.id) \
-                        .filter(*final_filters).scalar() or 0.0
-
-            budget.actual_spent = actual_spent
-            budget.remaining = budget.amount - budget.actual_spent
-
-            is_parent = bool(budget.children)
-            budget_data = {
-                'id': budget.id,
-                'name': budget.name,
-                'categories': budget.categories,
-                'keywords': budget.keywords,
-                'period': budget.period,
-                'start_date': budget.start_date,
-                'amount': budget.amount,
-                'actual_spent': budget.actual_spent,
-                'remaining': budget.remaining,
-                'parent_id': budget.parent_id,
-                'level': level,
-                'is_parent': is_parent
-            }
-            budget_list.append(budget_data)
-            
-            # After processing the current budget, recursively process its children
-            children_data = get_budgets_recursive(budget.id, level + 1)
-            budget_list.extend(children_data)
-
-            # Aggregate actual_spent from children if this is a parent budget
-            if budget.children:
-                budget_data['actual_spent'] += sum(child_item['actual_spent'] for child_item in children_data if child_item['parent_id'] == budget.id)
-                budget_data['remaining'] = budget_data['amount'] - budget_data['actual_spent']
-        return budget_list
-
-    budgets_data = get_budgets_recursive(None, 0)
-    categories = Category.query.order_by(Category.name).all()
     all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
+    budget_ids = [b.id for b in all_budgets]
+    
+    today = datetime.now().date()
+    start_date = today.replace(day=1)
+    end_date = (start_date + timedelta(days=31)).replace(day=1) - timedelta(days=1)
 
-    return render_template('budget.html', budgets_data=budgets_data, categories=categories, all_budgets=all_budgets)
+    actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
 
-@reports_bp.route('/budget/<int:budget_id>/delete', methods=['GET']) # Should be POST
+    budgets_data = []
+    for budget in all_budgets:
+        actual_spent = actual_spendings.get(budget.id, 0.0)
+        budgets_data.append({
+            'id': budget.id,
+            'name': budget.name,
+            'categories': budget.categories,
+            'period': budget.period,
+            'start_date': budget.start_date,
+            'amount': budget.amount,
+            'actual_spent': actual_spent,
+            'remaining': budget.amount - actual_spent,
+            'parent_id': budget.parent_id,
+            'level': get_budget_level(budget, all_budgets),
+            'is_parent': bool(budget.children)
+        })
+
+    all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
+    journal_categories = db.session.query(JournalEntries.category).filter(
+        JournalEntries.client_id == session['client_id'], 
+        JournalEntries.category != None, 
+        JournalEntries.category != ''
+    ).distinct().all()
+    
+    existing_categories = Category.query.filter_by(client_id=session['client_id']).all()
+    
+    category_names = {c[0] for c in journal_categories}
+    for cat in existing_categories:
+        category_names.add(cat.name)
+        
+    all_categories = [{'name': name} for name in sorted(list(category_names))]
+
+    return render_template('budget.html', budgets_data=budgets_data, all_budgets=all_budgets, all_categories=all_categories)
+
+@reports_bp.route('/budget/<int:budget_id>/delete', methods=['POST'])
 def delete_budget(budget_id):
     budget = Budget.query.get_or_404(budget_id)
     if budget.client_id != session.get('client_id'):
@@ -521,27 +450,157 @@ def edit_budget(budget_id):
         budget.period = request.form.get('period')
         budget.start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
         budget.parent_id = request.form.get('parent_id') if request.form.get('parent_id') else None
-        budget.keywords = request.form.get('keywords')
-
+        
         budget.categories.clear()
-        category_ids = request.form.getlist('categories')
-        for cat_id in category_ids:
-            category = Category.query.get(cat_id)
-            if category:
-                budget.categories.append(category)
+        category_names = request.form.getlist('categories')
+        for cat_name in category_names:
+            category = Category.query.filter_by(name=cat_name, client_id=session['client_id']).first()
+            if not category:
+                category = Category(name=cat_name, client_id=session['client_id'])
+                db.session.add(category)
+            budget.categories.append(category)
 
         db.session.commit()
         flash('Budget updated successfully.', 'success')
         return redirect(url_for('reports.budget'))
 
-    categories = Category.query.order_by(Category.name).all()
     all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
-    return render_template('edit_budget.html', budget=budget, categories=categories, all_budgets=all_budgets)
+    all_categories = Category.query.filter_by(client_id=session['client_id']).order_by(Category.name).all()
+    return render_template('edit_budget.html', budget=budget, all_budgets=all_budgets, all_categories=all_categories)
+
+@reports_bp.route('/budget_analysis/<int:budget_id>', methods=['GET', 'POST'])
+def budget_analysis(budget_id):
+    budget = Budget.query.get_or_404(budget_id)
+    if budget.client_id != session.get('client_id'):
+        flash('You do not have permission to view this budget analysis.', 'danger')
+        return redirect(url_for('reports.budget'))
+
+    today = datetime.now().date()
+    start_date = None
+    end_date = today
+
+    if request.method == 'POST':
+        start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
+        end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
+    else:
+        period = request.args.get('period', 'ytd') # Default to ytd
+        if period == 'current_month':
+            start_date = today.replace(day=1)
+            end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
+        elif period == 'last_3_months':
+            start_date = today - timedelta(days=90)
+        elif period == 'last_6_months':
+            start_date = today - timedelta(days=180)
+        else: # Default to ytd
+            start_date = today.replace(month=1, day=1)
+
+    num_periods = get_num_periods(start_date, end_date, budget.period)
+    total_budgeted = budget.total_budgeted * num_periods
+    actual_spendings = get_budgets_actual_spent([budget_id], start_date, end_date)
+    actual_spent = actual_spendings.get(budget_id, 0.0)
+    difference = total_budgeted - actual_spent
+
+    all_budgets_in_tree = [budget] + budget.get_all_descendants()
+    all_categories = []
+    all_keywords = []
+    for b in all_budgets_in_tree:
+        for c in b.categories:
+            all_categories.append(c.name)
+        if b.keywords:
+            all_keywords.extend([k.strip() for k in b.keywords.split(',')])
+
+    journal_filters = [
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date,
+        Account.type == 'Expense'
+    ]
+
+    conditions = []
+    if all_categories:
+        conditions.append(JournalEntries.category.in_(all_categories))
+    if all_keywords:
+        conditions.append(db.or_(*[JournalEntries.description.ilike(f'%{kw}%') for kw in all_keywords]))
+    
+    if conditions:
+        journal_filters.append(db.or_(*conditions))
+
+    sort_by = request.args.get('sort_by', 'date')
+    sort_dir = request.args.get('sort_dir', 'desc')
+
+    sort_column = getattr(JournalEntries, sort_by, JournalEntries.date)
+
+    if sort_dir == 'desc':
+        sort_order = sort_column.desc()
+    else:
+        sort_order = sort_column.asc()
+
+    contributing_transactions = JournalEntries.query.join(Account, JournalEntries.debit_account_id == Account.id).filter(*journal_filters).order_by(sort_order).all()
+
+    historical_performance = budget.get_historical_performance(start_date, end_date)
+    spending_breakdown = budget.get_spending_breakdown(start_date, end_date)
+
+    return render_template('budget_analysis.html', 
+                           budget=budget, 
+                           actual_spent=actual_spent, 
+                           total_budgeted=total_budgeted,
+                           difference=difference,
+                           contributing_transactions=contributing_transactions,
+                           period_start=start_date,
+                           period_end=end_date,
+                           historical_performance=historical_performance,
+                           spending_breakdown=spending_breakdown,
+                           start_date=start_date.strftime('%Y-%m-%d'),
+                           end_date=end_date.strftime('%Y-%m-%d'))
 
 @reports_bp.route('/audit_trail')
 def audit_trail():
     logs = AuditTrail.query.join(AuditTrail.user).filter_by(client_id=session['client_id']).order_by(AuditTrail.date.desc()).all()
     return render_template('audit_trail.html', logs=logs)
+
+@reports_bp.route('/what_if_scenarios', methods=['GET', 'POST'])
+def what_if_scenarios():
+    if request.method == 'POST':
+        budget_id = request.form.get('budget_id')
+        new_amount = float(request.form.get('new_amount'))
+
+        original_budget = Budget.query.get(budget_id)
+        
+        # Create a temporary, in-memory budget object for the scenario
+        scenario_budget = Budget(
+            id=original_budget.id, # Keep the same ID for calculations
+            name=original_budget.name + " (Scenario)",
+            amount=new_amount,
+            period=original_budget.period,
+            start_date=original_budget.start_date,
+            client_id=original_budget.client_id,
+            parent_id=original_budget.parent_id,
+            keywords=original_budget.keywords,
+            categories=original_budget.categories
+        )
+
+        today = datetime.now().date()
+        start_date = today.replace(day=1)
+        end_date = (start_date + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+
+        # Calculate actual spending for both original and scenario budgets
+        actual_spendings = get_budgets_actual_spent([original_budget.id], start_date, end_date)
+        actual_spent = actual_spendings.get(original_budget.id, 0.0)
+
+        original_difference = original_budget.total_budgeted - actual_spent
+        scenario_difference = new_amount - actual_spent
+
+        return render_template('what_if_scenarios.html', 
+                               budgets=Budget.query.filter_by(client_id=session['client_id']).all(),
+                               original_budget=original_budget,
+                               scenario_budget=scenario_budget,
+                               actual_spent=actual_spent,
+                               original_difference=original_difference,
+                               scenario_difference=scenario_difference,
+                               selected_budget_id=int(budget_id))
+
+    budgets = Budget.query.filter_by(client_id=session['client_id']).all()
+    return render_template('what_if_scenarios.html', budgets=budgets)
 
 @reports_bp.route('/full_pie_chart_expenses')
 def full_pie_chart_expenses():
@@ -553,16 +612,16 @@ def full_pie_chart_expenses():
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
     spending_by_category_query = db.session.query(
-        JournalEntry.category,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
-        JournalEntry.client_id == client_id,
-        JournalEntry.date >= start_date,
-        JournalEntry.date <= end_date,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date,
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category).order_by(db.func.sum(JournalEntries.amount).desc())
 
     spending_by_category = spending_by_category_query.all()
     labels = json.dumps([item.category for item in spending_by_category])
@@ -585,16 +644,16 @@ def full_pie_chart_income():
     end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
 
     income_by_category_query = db.session.query(
-        JournalEntry.category,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.credit_account_id == Account.id).filter(
         Account.type == 'Revenue',
-        JournalEntry.client_id == client_id,
-        JournalEntry.date >= start_date,
-        JournalEntry.date <= end_date,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category).order_by(db.func.sum(JournalEntry.amount).desc())
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date,
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category).order_by(db.func.sum(JournalEntries.amount).desc())
 
     income_by_category = income_by_category_query.all()
     labels = json.dumps([item.category for item in income_by_category])
@@ -614,8 +673,8 @@ def export_ledger():
     cw = csv.writer(si)
     cw.writerow(['Account', 'Type', 'Opening Balance', 'Debits', 'Credits', 'Net Change', 'Closing Balance'])
     for account in accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id).scalar() or 0
         net_change = credits - debits
         closing_balance = account.opening_balance + net_change
         cw.writerow([account.name, account.type, account.opening_balance, abs(debits), credits, net_change, closing_balance])
@@ -626,8 +685,8 @@ def export_ledger():
 
 @reports_bp.route('/export/income_statement')
 def export_income_statement():
-    income = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry, JournalEntry.credit_account_id == Account.id).filter(Account.type.in_(['Revenue', 'Income']), JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
-    expenses = db.session.query(Account.name, db.func.sum(JournalEntry.amount).label('total')).join(JournalEntry, JournalEntry.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntry.client_id == session['client_id']).group_by(Account.name).all()
+    income = db.session.query(Account.name, db.func.sum(JournalEntries.amount).label('total')).join(JournalEntries, JournalEntries.credit_account_id == Account.id).filter(Account.type.in_(['Revenue', 'Income']), JournalEntries.client_id == session['client_id']).group_by(Account.name).all()
+    expenses = db.session.query(Account.name, db.func.sum(JournalEntries.amount).label('total')).join(JournalEntries, JournalEntries.debit_account_id == Account.id).filter(Account.type == 'Expense', JournalEntries.client_id == session['client_id']).group_by(Account.name).all()
     si = io.StringIO()
     cw = csv.writer(si)
     cw.writerow(['Category', 'Amount'])
@@ -652,8 +711,8 @@ def export_balance_sheet():
     cw.writerow(['Assets', '', ''])
     asset_accounts = Account.query.filter(Account.type.in_(['Asset', 'Accounts Receivable', 'Inventory', 'Fixed Asset', 'Accumulated Depreciation'])).filter_by(client_id=session['client_id']).all()
     for account in asset_accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id, JournalEntry.client_id == session['client_id']).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id, JournalEntry.client_id == session['client_id']).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id, JournalEntries.client_id == session['client_id']).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id, JournalEntries.client_id == session['client_id']).scalar() or 0
         balance = account.opening_balance + debits - credits
         cw.writerow([account.name, account.type, balance])
 
@@ -661,8 +720,8 @@ def export_balance_sheet():
     cw.writerow(['Liabilities', '', ''])
     liability_accounts = Account.query.filter(Account.type.in_(['Liability', 'Accounts Payable', 'Long-Term Debt'])).filter_by(client_id=session['client_id']).all()
     for account in liability_accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id, JournalEntry.client_id == session['client_id']).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id, JournalEntry.client_id == session['client_id']).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id, JournalEntries.client_id == session['client_id']).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id, JournalEntries.client_id == session['client_id']).scalar() or 0
         balance = account.opening_balance + credits - debits
         cw.writerow([account.name, account.type, balance])
 
@@ -670,8 +729,8 @@ def export_balance_sheet():
     cw.writerow(['Equity', '', ''])
     equity_accounts = Account.query.filter_by(client_id=session['client_id'], type='Equity').all()
     for account in equity_accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id, JournalEntry.client_id == session['client_id']).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id, JournalEntry.client_id == session['client_id']).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id, JournalEntries.client_id == session['client_id']).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id, JournalEntries.client_id == session['client_id']).scalar() or 0
         balance = account.opening_balance + credits - debits
         cw.writerow([account.name, account.type, balance])
 

@@ -1,7 +1,21 @@
-from app.models import Account, AuditTrail, JournalEntry, Reconciliation
+from app.models import Account, AuditTrail, JournalEntries, Reconciliation, Budget
 from flask import session
 from flask_login import current_user
 from app import db
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+
+def get_num_periods(start_date, end_date, period):
+    if period == 'monthly':
+        delta = relativedelta(end_date, start_date)
+        return delta.years * 12 + delta.months + 1
+    elif period == 'quarterly':
+        start_quarter = (start_date.month - 1) // 3 + 1
+        end_quarter = (end_date.month - 1) // 3 + 1
+        return (end_date.year - start_date.year) * 4 + end_quarter - start_quarter + 1
+    elif period == 'yearly':
+        return end_date.year - start_date.year + 1
+    return 1
 
 def get_account_choices(client_id):
     def _get_accounts_recursive(parent_id, level):
@@ -24,8 +38,8 @@ def update_all_balances(client_id):
     from datetime import datetime
 
     def _calculate_balance(account):
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id).scalar() or 0
         if account.type in ['Asset', 'Expense']:
             return account.opening_balance + debits - credits
         else:
@@ -58,12 +72,12 @@ def get_account_tree(accounts, start_date=None, end_date=None):
         children_tree = get_account_tree(account.children.all(), start_date, end_date)
         
         # Calculate this account's individual balance without children
-        debits_query = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id)
-        credits_query = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id)
+        debits_query = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id)
+        credits_query = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id)
 
         if start_date and end_date:
-            debits_query = debits_query.filter(JournalEntry.date.between(start_date, end_date))
-            credits_query = credits_query.filter(JournalEntry.date.between(start_date, end_date))
+            debits_query = debits_query.filter(JournalEntries.date.between(start_date, end_date))
+            credits_query = credits_query.filter(JournalEntries.date.between(start_date, end_date))
 
         debits = debits_query.scalar() or 0
         credits = credits_query.scalar() or 0
@@ -89,3 +103,54 @@ def get_account_tree(accounts, start_date=None, end_date=None):
             'live_balance_updated_at': account.balance_last_updated
         })
     return account_tree
+
+def get_budgets_actual_spent(budget_ids, start_date, end_date):
+    from app.models import Budget
+    budgets = Budget.query.filter(Budget.id.in_(budget_ids)).all()
+    if not budgets:
+        return {}
+
+    client_id = budgets[0].client_id
+    all_budget_trees = {}
+    all_categories = set()
+    all_keywords = set()
+
+    for budget in budgets:
+        descendants = [budget] + budget.get_all_descendants()
+        all_budget_trees[budget.id] = descendants
+        for b in descendants:
+            for cat in b.categories:
+                all_categories.add(cat.name)
+
+
+    journal_filters = [
+        JournalEntries.client_id == client_id,
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date
+    ]
+
+    conditions = []
+    if all_categories:
+        conditions.append(JournalEntries.category.in_(all_categories))
+    if all_keywords:
+        conditions.append(db.or_(*[JournalEntries.description.ilike(f'%{kw}%') for kw in all_keywords]))
+    
+    if conditions:
+        journal_filters.append(db.or_(*conditions))
+
+    transactions = JournalEntries.query.filter(*journal_filters).all()
+
+    budget_spending = {budget_id: 0.0 for budget_id in budget_ids}
+
+    for budget_id, budget_tree in all_budget_trees.items():
+        budget_categories = set()
+        for b in budget_tree:
+            for cat in b.categories:
+                budget_categories.add(cat.name)
+
+
+        for t in transactions:
+            if t.category in budget_categories:
+                budget_spending[budget_id] += t.amount
+
+    return budget_spending

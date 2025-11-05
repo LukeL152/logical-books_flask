@@ -22,7 +22,7 @@
         <tbody>
             {% for client in clients %}
             <tr>
-                <td><a href="{{ url_for('clients.select_client', client_id=client.id) }}">{{ client.business_name }}</a></td>
+                <td><a href="{{ url_for('clients.client_detail', client_id=client.id) }}">{{ client.business_name }}</a></td>
                 <td>{{ client.contact_name }}</td>
                 <td>{{ client.contact_email }}</td>
                 <td><span class="badge bg-{% if client.client_status == 'Active' %}success{% elif client.client_status == 'Inactive' %}warning{% else %}info{% endif %}">{{ client.client_status }}</span></td>

@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import Transaction, JournalEntry, Account, TransactionRule, ImportTemplate, RecurringTransaction
+from app.models import Transaction, JournalEntries, Account, TransactionRule, ImportTemplate, RecurringTransaction
 from app.utils import get_account_choices, log_audit
 from datetime import datetime
 from app.utils import get_account_choices, log_audit
@@ -68,7 +68,7 @@ def delete_transactions():
 
 @transactions_bp.route('/cleanup_orphaned_transactions')
 def cleanup_orphaned_transactions():
-    orphaned_transactions = db.session.query(Transaction).outerjoin(JournalEntry, Transaction.id == JournalEntry.transaction_id).filter(Transaction.is_approved, JournalEntry.transaction_id.is_(None)).all()
+    orphaned_transactions = db.session.query(Transaction).outerjoin(JournalEntries, Transaction.id == JournalEntries.transaction_id).filter(Transaction.is_approved, JournalEntries.transaction_id.is_(None)).all()
     for transaction in orphaned_transactions:
         db.session.delete(transaction)
     db.session.commit()
@@ -91,8 +91,7 @@ def unapproved_transactions():
     
     all_transactions = base_query.all()
 
-    # Get fingerprints of all existing journal entries
-    journal_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
+    journal_entries = JournalEntries.query.filter_by(client_id=session['client_id']).all()
     journal_fingerprints = set((je.date, je.description.strip(), round(je.amount, 2)) for je in journal_entries)
 
     # Duplicate detection
@@ -113,7 +112,7 @@ def unapproved_transactions():
 @transactions_bp.route('/delete_duplicates')
 def delete_duplicates():
     unapproved_transactions = Transaction.query.filter_by(client_id=session['client_id'], is_approved=False).all()
-    journal_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
+    journal_entries = JournalEntries.query.filter_by(client_id=session['client_id']).all()
     journal_fingerprints = set((je.date, je.description.strip(), round(je.amount, 2)) for je in journal_entries)
 
     duplicates_to_delete = []
@@ -146,15 +145,15 @@ def approve_transactions():
             flash(f'Debit and credit accounts must be selected for transaction {transaction.id}.', 'danger')
             continue
 
-        new_entry = JournalEntry(
-            date=transaction.date,
-            description=transaction.description,
-            debit_account_id=debit_account_id,
-            credit_account_id=credit_account_id,
-            amount=abs(transaction.amount),
-            category=transaction.category,
-            transaction_id=transaction.id,
-            client_id=session['client_id']
+        new_entry = JournalEntries(
+                date=transaction.date,
+                description=transaction.description,
+                debit_account_id=debit_account_id,
+                credit_account_id=credit_account_id,
+                amount=abs(transaction.amount),
+                category=transaction.category,
+                transaction_id=transaction.id,
+                client_id=session['client_id']
         )
         db.session.add(new_entry)
         transaction.is_approved = True
@@ -177,7 +176,7 @@ def approve_transaction(transaction_id):
         flash(f'Debit and credit accounts must be selected for transaction {transaction.id}.', 'danger')
         return redirect(url_for('transactions.unapproved_transactions'))
 
-    new_entry = JournalEntry(
+    new_entry = JournalEntries(
         date=transaction.date,
         description=transaction.description,
         debit_account_id=debit_account_id,

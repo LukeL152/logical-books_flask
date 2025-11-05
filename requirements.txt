@@ -12,6 +12,9 @@ SQLAlchemy==2.0.31
 Werkzeug==3.0.1
 zipp==3.17.0
 python-dotenv
+Markdown
+Flask-Markdown
+
 plaid-python
 PyJWT==2.8.0
 cryptography==41.0.7

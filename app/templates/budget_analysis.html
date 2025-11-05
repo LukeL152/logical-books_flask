@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% macro sortable_header(column, label) %}
+    {% set sort_dir = 'asc' if request.args.get('sort_by') == column and request.args.get('sort_dir') == 'desc' else 'desc' %}
+    <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, period=request.args.get('period'), sort_by=column, sort_dir=sort_dir) }}">{{ label }}</a>
+{% endmacro %}
+
+{% block content %}
+<h1 class="mb-4">Budget Analysis: {{ budget.name }}</h1>
+
+<div class="mb-4 mt-4">
+    <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, period='ytd') }}" class="btn btn-outline-primary">YTD</a>
+    <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, period='current_month') }}" class="btn btn-outline-primary">Current Month</a>
+    <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, period='last_3_months') }}" class="btn btn-outline-primary">Last 3 Months</a>
+    <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, period='last_6_months') }}" class="btn btn-outline-primary">Last 6 Months</a>
+</div>
+
+<form action="{{ url_for('reports.budget_analysis', budget_id=budget.id) }}" method="post" class="row g-3 mb-4">
+    <div class="col-md-4">
+        <label for="start_date" class="form-label">Start Date</label>
+        <input type="date" id="start_date" name="start_date" class="form-control" value="{{ start_date }}">
+    </div>
+    <div class="col-md-4">
+        <label for="end_date" class="form-label">End Date</label>
+        <input type="date" id="end_date" name="end_date" class="form-control" value="{{ end_date }}">
+    </div>
+    <div class="col-md-4 align-self-end">
+        <button type="submit" class="btn btn-primary">Apply Filter</button>
+    </div>
+</form>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total Budgeted</h5>
+                <p class="card-text fs-4">${{ "%.2f"|format(total_budgeted) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Actual Spent</h5>
+                <p class="card-text fs-4">${{ "%.2f"|format(actual_spent) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Difference</h5>
+                <p class="card-text fs-4 {% if difference >= 0 %}text-success{% else %}text-danger{% endif %} ">${{ "%.2f"|format(difference) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2>Performance Over Time</h2>
+<div class="card mb-4">
+    <div class="card-body">
+        <canvas id="historicalPerformanceChart"></canvas>
+    </div>
+</div>
+
+<h2>Spending Breakdown (Current Period)</h2>
+<div class="card mb-4">
+    <div class="card-body">
+        <canvas id="spendingBreakdownChart"></canvas>
+    </div>
+</div>
+
+<h2>Contributing Transactions</h2>
+{% if contributing_transactions %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>{{ sortable_header('date', 'Date') }}</th>
+            <th>{{ sortable_header('description', 'Description') }}</th>
+            <th>{{ sortable_header('category', 'Category') }}</th>
+            <th class="text-end">{{ sortable_header('amount', 'Amount') }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for transaction in contributing_transactions %}
+        <tr>
+            <td>{{ transaction.date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ transaction.description }}</td>
+            <td>{{ transaction.category }}</td>
+            <td class="text-end">{{ "%.2f"|format(transaction.amount) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No contributing transactions found for this period.</p>
+{% endif %}
+
+<a href="{{ url_for('reports.budget') }}" class="btn btn-secondary">Back to Budgets</a>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Historical Performance Chart
+        var hpCtx = document.getElementById('historicalPerformanceChart').getContext('2d');
+        var historicalPerformanceChart = new Chart(hpCtx, {
+            type: 'bar',
+            data: {
+                labels: [{% for item in historical_performance %}'{{ item.period_name }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+                datasets: [
+                    {
+                        label: 'Budgeted',
+                        data: [{% for item in historical_performance %}{{ item.budgeted }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Actual',
+                        data: [{% for item in historical_performance %}{{ item.actual }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        stacked: false,
+                    },
+                    y: {
+                        stacked: false,
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Spending Breakdown Chart
+        var sbCtx = document.getElementById('spendingBreakdownChart').getContext('2d');
+        var spendingBreakdownChart = new Chart(sbCtx, {
+            type: 'pie',
+            data: {
+                labels: [{% for item in spending_breakdown %}'{{ item.category }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+                datasets: [{
+                    data: [{% for item in spending_breakdown %}{{ item.total }}{% if not loop.last %}, {% endif %}{% endfor %}],
+                    backgroundColor: [
+                        '#FF6384',
+                        '#36A2EB',
+                        '#FFCE56',
+                        '#4BC0C0',
+                        '#9966FF',
+                        '#FF9F40'
+                    ],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                let value = context.parsed || 0;
+                                let sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                let percentage = (value / sum * 100).toFixed(2) + '%';
+                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) + ' (' + percentage + ')';
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

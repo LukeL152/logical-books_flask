@@ -10,10 +10,10 @@
             <input type="text" id="name" name="name" class="form-control" value="{{ budget.name }}" required>
         </div>
         <div class="col-md-4">
-            <label for="category" class="form-label">Category</label>
-            <select id="category" name="categories" class="form-select" multiple>
-                {% for category in categories %}
-                    <option value="{{ category.id }}" {% if category in budget.categories %}selected{% endif %}>{{ category.name }}</option>
+            <label for="categories" class="form-label">Categories</label>
+            <select id="categories" name="categories" class="form-select" multiple>
+                {% for category in all_categories %}
+                    <option value="{{ category.name }}" {% if category in budget.categories %}selected{% endif %}>{{ category.name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -28,10 +28,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-4">
-            <label for="keywords" class="form-label">Keywords (comma-separated)</label>
-            <input type="text" id="keywords" name="keywords" class="form-control" value="{{ budget.keywords if budget.keywords else '' }}">
-        </div>
+
         <div class="col-md-2">
             <label for="amount" class="form-label">Amount</label>
             <input type="number" step="0.01" id="amount" name="amount" class="form-control" value="{{ budget.amount }}" required>
@@ -54,4 +51,14 @@
         </div>
     </div>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#categories').select2({
+        tags: true
+    });
+});
+</script>
 {% endblock %}

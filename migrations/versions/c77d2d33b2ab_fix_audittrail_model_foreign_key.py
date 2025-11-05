@@ -1,7 +1,7 @@
 """Fix AuditTrail model foreign key
 
 Revision ID: c77d2d33b2ab
-Revises: e65985acdb85
+Revises: 308be7a44f30
 Create Date: 2025-10-10 13:15:59.969920
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'c77d2d33b2ab'
-down_revision = 'e65985acdb85'
+down_revision = '308be7a44f30'
 branch_labels = None
 depends_on = None
 

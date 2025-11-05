@@ -20,10 +20,6 @@ fi
 
 # 3. Stamping the database head...
 echo "3. Stamping the database head..."
-flask db stamp head
-if [ $? -ne 0 ]; then
-    echo "Error: flask db stamp head command failed."
-    exit 1
-fi
+
 
 echo "--- Migration Created Successfully ---"

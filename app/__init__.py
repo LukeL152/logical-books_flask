@@ -10,11 +10,17 @@ import logging
 import json
 from datetime import datetime, timedelta
 from markupsafe import Markup
-
 db = SQLAlchemy()
 migrate = Migrate()
 scheduler = APScheduler()
-from app import models
+
+from app.models import (
+    User, Role, Client, Account, JournalEntries, Document, ImportTemplate,
+    Budget, FinancialPeriod, FixedAsset, Depreciation, Product, Inventory,
+    Sale, RecurringTransaction, PlaidItem, PlaidAccount, PendingPlaidLink,
+    Transaction, AuditTrail, TransactionRule, Vendor, Reconciliation,
+    Notification
+)
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -76,6 +82,7 @@ def create_app():
         scheduler.add_job(id='reverse_accruals', func=tasks.reverse_accruals, trigger='cron', day=1, hour=0)
         scheduler.add_job(id='create_recurring_journal_entries', func=tasks.create_recurring_journal_entries, trigger='cron', day=1, hour=0)
         scheduler.add_job(id='cleanup_pending_plaid_links', func=tasks.cleanup_pending_plaid_links, trigger='cron', day='*', hour=2)
+        scheduler.add_job(id='check_budgets', func=tasks.check_budgets, trigger='cron', day='*', hour=3)
 
     app.json_encoder = CustomJSONEncoder
 
@@ -122,6 +129,9 @@ def create_app():
 
     from app.routes.dashboard import dashboard_bp
     app.register_blueprint(dashboard_bp)
+
+    from app.routes.guides import guides_bp
+    app.register_blueprint(guides_bp)
 
     from app import commands
     app.cli.add_command(commands.inspect_plaid)

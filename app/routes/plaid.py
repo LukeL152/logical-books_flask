@@ -568,7 +568,7 @@ def fetch_transactions():
                     plaid_transaction_id=t['transaction_id'],
                     date=t['date'],
                     description=t['name'],
-                    amount=-t['amount'],
+                    amount=-t['amount'], # Plaid returns positive for debits, negative for credits
                     category=t['category'][0] if t['category'] else None,
                     client_id=session['client_id'],
                     is_approved=False,

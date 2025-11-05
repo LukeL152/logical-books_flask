@@ -1,5 +1,5 @@
 from app import db, scheduler
-from app.models import FixedAsset, Depreciation, JournalEntry, Account, RecurringTransaction, PendingPlaidLink, Transaction, Client
+from app.models import FixedAsset, Depreciation, JournalEntries, Account, RecurringTransaction, PendingPlaidLink, Transaction, Client, Budget, Notification
 from datetime import datetime, timedelta
 from flask import session, current_app
 import logging
@@ -171,3 +171,27 @@ def detect_recurring_transactions(client_id):
                     })
 
         return recurring_transactions
+
+def check_budgets():
+    with scheduler.app.app_context():
+        from app.utils import get_budgets_actual_spent
+        today = datetime.now().date()
+        clients = Client.query.all()
+        for client in clients:
+            budgets = Budget.query.filter_by(client_id=client.id).all()
+            if not budgets:
+                continue
+
+            budget_ids = [b.id for b in budgets]
+            start_date = today.replace(day=1)
+            end_date = (start_date + timedelta(days=31)).replace(day=1) - timedelta(days=1)
+            actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
+
+            for budget in budgets:
+                actual_spent = actual_spendings.get(budget.id, 0.0)
+                if actual_spent >= budget.total_budgeted * 0.8:
+                    user = client.users[0] # Assuming one user per client for now
+                    message = f"You have spent {actual_spent:.2f} of your {budget.total_budgeted:.2f} budget for {budget.name}."
+                    notification = Notification(user_id=user.id, message=message)
+                    db.session.add(notification)
+        db.session.commit()

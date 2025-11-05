@@ -1,6 +1,7 @@
-from flask import Blueprint, redirect, url_for, session, request, render_template, flash
-from flask_login import login_user, logout_user, current_user
-from app.models import User
+from flask import Blueprint, render_template, session, redirect, url_for, request, flash
+from flask_login import login_required, current_user, login_user, logout_user
+from app.models import Client, Notification, User
+from flask import jsonify
 
 main_bp = Blueprint('main', __name__)
 
@@ -38,7 +39,12 @@ import os
 
 @main_bp.route('/bookkeeping_guide')
 def bookkeeping_guide():
-    with open(os.path.join(os.path.dirname(__file__), '..', '..', 'BOOKKEEPING_GUIDE.md'), 'r') as f:
+    with open('BOOKKEEPING_GUIDE.md', 'r') as f:
         content = f.read()
-    guide_content = markdown.markdown(content)
-    return render_template('bookkeeping_guide.html', guide_content=guide_content)
+    return render_template('bookkeeping_guide.html', content=content)
+
+@main_bp.route('/notifications')
+@login_required
+def notifications():
+    notifications = Notification.query.filter_by(user_id=current_user.id, is_read=False).order_by(Notification.created_at.desc()).all()
+    return jsonify([{'id': n.id, 'message': n.message, 'created_at': n.created_at} for n in notifications])

@@ -232,6 +232,33 @@ This section contains a running list of potential improvements for the Logical B
 1.  **Budgeting Module:**
     *   **Observation:** The application has a `budget.html` template, but the backend logic is not fully implemented.
     *   **Recommendation:** Build out the budgeting feature to allow users to set monthly or quarterly budgets for different expense accounts. Then, create a "Budget vs. Actual" report to track performance.
+    *   **Current Status (October 2025 Update):**
+        *   **Implemented:**
+            *   **Hierarchical Budget Display on `/budget` page:**
+                *   Refactored `app/routes/reports.py` to use `get_budgets_recursive` for a flattened, hierarchical list of budgets.
+                *   Updated `app/templates/budget.html` to display budgets in a collapsible tree table with `data-id` and `data-parent-id` attributes, similar to the Chart of Accounts.
+                *   Corrected `actual_spent` calculation in `app/routes/reports.py` to *only* include `JournalEntry` amounts, not `Transaction` amounts.
+            *   **Dashboard Budget Performance Tab (`/dashboard`):**
+                *   Refactored `app/routes/dashboard.py` to use `get_all_descendants` for calculating `total_budgeted` and `actual_spent` for hierarchical budgets.
+                *   Corrected `actual_spent` calculation in `app/routes/dashboard.py` to *only* include `JournalEntry` amounts, not `Transaction` amounts.
+                *   Fixed the logic for combining category and keyword filters in `actual_spent` calculation to use `OR` instead of `AND`.
+                *   Added "Overall Budget Health" KPI (total budgeted vs. total actual) to `app/routes/dashboard.py`.
+                *   Added "Top/Bottom Performers" list to `app/routes/dashboard.py`.
+                *   Updated `app/templates/dashboard.html` to display these new summary statistics.
+                *   Added `budget.id` to `performance_data` in `app/routes/dashboard.py` for linking.
+            *   **New In-depth Budget Analysis Page (`/budget_analysis/{budget_id}`):**
+                *   Created a new route `/budget_analysis/<int:budget_id>` in `app/routes/reports.py`.
+                *   Created a new template `app/templates/budget_analysis.html`.
+                *   Implemented "Drill-down to Transactions" by fetching and displaying contributing `JournalEntry` transactions on `budget_analysis.html`.
+                *   Implemented "Interactive Charts" (historical performance and spending breakdown) on `budget_analysis.html` using Chart.js.
+                *   Added a link from each budget card on the dashboard to its respective `/budget_analysis/{budget_id}` page.
+        *   **Pending Improvements:**
+            *   **Date Range Selection for `/budget_analysis`:** Allow users to select custom date ranges for the analysis on the `/budget_analysis` page.
+            *   **"What-If Scenarios" and "Alerts/Notifications":** Brainstormed ideas for advanced features.
+            *   **Flexible Period Selection for Dashboard:** Add custom date range selection to the dashboard, beyond fixed periods.
+            *   **Budget Grouping:** Allow users to create custom groups of budgets for reporting purposes.
+            *   **Refinement of Chart Visualizations:** Further customization or different chart types could be explored.
+            *   **Error Handling/Edge Cases:** Ensure robust handling for cases like budgets with no categories/keywords, no transactions, etc.
 
 2.  **Vendor Management:**
     *   **Observation:** The application has robust client management, but no equivalent for vendors (suppliers).

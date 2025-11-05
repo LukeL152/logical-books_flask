@@ -2,7 +2,7 @@ import click
 from flask.cli import with_appcontext
 import json
 from datetime import datetime, date
-from app.models import PlaidItem, Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidAccount, Transaction, JournalEntry, Role, User, Document, ImportTemplate, Depreciation, FinancialPeriod, AuditTrail
+from app.models import PlaidItem, Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidAccount, Transaction, JournalEntries, Role, User, Document, ImportTemplate, Depreciation, FinancialPeriod, AuditTrail
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
@@ -93,7 +93,7 @@ def export_data_command():
     if not os.path.exists('data_export'):
         os.makedirs('data_export')
 
-    models_to_export = [Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidItem, PlaidAccount, Transaction, JournalEntry]
+    models_to_export = [Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidItem, PlaidAccount, Transaction, JournalEntries]
     
     for model in models_to_export:
         # Use __tablename__ if available, otherwise use model name
@@ -161,26 +161,26 @@ def import_data_command():
         import_order = [
             ('client', Client, {}),
             ('role', Role, {}),
-            ('user', User, {'client_id': 'client', 'role_id': 'role'})
+            ('user', User, {'client_id': 'client', 'role_id': 'role'}),
             ('account', Account, {'client_id': 'client', 'parent_id': 'account'}), # parent_id handled specially
-            ('vendor', Vendor, {'client_id': 'client'})
-            ('product', Product, {'client_id': 'client'})
-            ('fixed_asset', FixedAsset, {'client_id': 'client'})
-            ('plaid_item', PlaidItem, {'client_id': 'client'})
-            ('plaid_account', PlaidAccount, {'plaid_item_id': 'plaid_item', 'local_account_id': 'account'})
-            ('transaction', Transaction, {'client_id': 'client', 'source_account_id': 'account'})
-            ('journal_entries', JournalEntry, {'client_id': 'client', 'debit_account_id': 'account', 'credit_account_id': 'account', 'transaction_id': 'transaction'})
-            ('reconciliation', Reconciliation, {'client_id': 'client', 'account_id': 'account'})
-            ('transaction_rule', TransactionRule, {'client_id': 'client', 'new_debit_account_id': 'account', 'new_credit_account_id': 'account', 'source_account_id': 'account'})
+            ('vendor', Vendor, {'client_id': 'client'}),
+            ('product', Product, {'client_id': 'client'}),
+            ('fixed_asset', FixedAsset, {'client_id': 'client'}),
+            ('plaid_item', PlaidItem, {'client_id': 'client'}),
+            ('plaid_account', PlaidAccount, {'plaid_item_id': 'plaid_item', 'local_account_id': 'account'}),
+            ('transaction', Transaction, {'client_id': 'client', 'source_account_id': 'account'}),
+            ('journal_entries', JournalEntries, {'client_id': 'client', 'debit_account_id': 'account', 'credit_account_id': 'account', 'transaction_id': 'transaction'}),
+            ('reconciliation', Reconciliation, {'client_id': 'client', 'account_id': 'account'}),
+            ('transaction_rule', TransactionRule, {'client_id': 'client', 'new_debit_account_id': 'account', 'new_credit_account_id': 'account', 'source_account_id': 'account'}),
             
-            ('budget', Budget, {'client_id': 'client'})
-            ('inventory', Inventory, {'client_id': 'client', 'product_id': 'product'})
-            ('sale', Sale, {'client_id': 'client', 'product_id': 'product'})
-            ('recurring_transaction', RecurringTransaction, {'client_id': 'client', 'debit_account_id': 'account', 'credit_account_id': 'account'})
-            ('document', Document, {'client_id': 'client', 'journal_entry_id': 'journal_entries'})
-            ('import_template', ImportTemplate, {'client_id': 'client', 'account_id': 'account'})
-            ('depreciation', Depreciation, {'client_id': 'client', 'fixed_asset_id': 'fixed_asset'})
-            ('financial_period', FinancialPeriod, {'client_id': 'client'})
+            ('budget', Budget, {'client_id': 'client'}),
+            ('inventory', Inventory, {'client_id': 'client', 'product_id': 'product'}),
+            ('sale', Sale, {'client_id': 'client', 'product_id': 'product'}),
+            ('recurring_transaction', RecurringTransaction, {'client_id': 'client', 'debit_account_id': 'account', 'credit_account_id': 'account'}),
+            ('document', Document, {'client_id': 'client', 'journal_entry_id': 'journal_entries'}),
+            ('import_template', ImportTemplate, {'client_id': 'client', 'account_id': 'account'}),
+            ('depreciation', Depreciation, {'client_id': 'client', 'fixed_asset_id': 'fixed_asset'}),
+            ('financial_period', FinancialPeriod, {'client_id': 'client'}),
             ('audit_trail', AuditTrail, {'user_id': 'client'}), # user_id in AuditTrail maps to client.id
         ]
 

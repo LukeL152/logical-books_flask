@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">What-if Scenarios</h1>
+
+<div class="card mb-4">
+    <div class="card-header">Create a Scenario</div>
+    <div class="card-body">
+        <form action="{{ url_for('reports.what_if_scenarios') }}" method="post">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="budget_id" class="form-label">Select Budget</label>
+                    <select id="budget_id" name="budget_id" class="form-select" required>
+                        <option value="">Choose a budget...</option>
+                        {% for budget in budgets %}
+                            <option value="{{ budget.id }}" {% if selected_budget_id == budget.id %}selected{% endif %}>{{ budget.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="new_amount" class="form-label">New Budget Amount</label>
+                    <input type="number" step="0.01" id="new_amount" name="new_amount" class="form-control" required>
+                </div>
+                <div class="col-md-2 align-self-end">
+                    <button type="submit" class="btn btn-primary">Run Scenario</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if original_budget %}
+<h2 class="mt-5">Scenario Results</h2>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Original Budget: {{ original_budget.name }}</div>
+            <div class="card-body">
+                <p><strong>Budgeted Amount:</strong> ${{ "%.2f"|format(original_budget.total_budgeted) }}</p>
+                <p><strong>Actual Spent:</strong> ${{ "%.2f"|format(actual_spent) }}</p>
+                <p><strong>Difference:</strong> <span class="{% if original_difference >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(original_difference) }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">What-if Scenario: {{ scenario_budget.name }}</div>
+            <div class="card-body">
+                <p><strong>Budgeted Amount:</strong> ${{ "%.2f"|format(scenario_budget.amount) }}</p>
+                <p><strong>Actual Spent:</strong> ${{ "%.2f"|format(actual_spent) }}</p>
+                <p><strong>Difference:</strong> <span class="{% if scenario_difference >= 0 %}text-success{% else %}text-danger{% endif %}">${{ "%.2f"|format(scenario_difference) }}</span></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

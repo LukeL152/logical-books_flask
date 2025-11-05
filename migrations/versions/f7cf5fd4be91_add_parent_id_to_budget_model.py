@@ -1,7 +1,7 @@
 """add parent_id to budget model
 
 Revision ID: f7cf5fd4be91
-Revises: f209fb3103dd
+Revises: b54f9f8868f1
 Create Date: 2025-10-30 14:56:23.692342
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'f7cf5fd4be91'
-down_revision = 'f209fb3103dd'
+down_revision = 'b54f9f8868f1'
 branch_labels = None
 depends_on = None
 

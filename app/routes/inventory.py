@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import Product, Inventory, Sale, Account, JournalEntry
+from app.models import Product, Inventory, Sale, Account, JournalEntries
 from datetime import datetime
 
 inventory_bp = Blueprint('inventory', __name__)

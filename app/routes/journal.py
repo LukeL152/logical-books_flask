@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import JournalEntry, Account, Transaction
+from app.models import JournalEntries, Account, Transaction
 from datetime import datetime
 from sqlalchemy import func
 from app.utils import get_account_choices, log_audit, update_all_balances
@@ -9,9 +9,9 @@ journal_bp = Blueprint('journal', __name__)
 
 @journal_bp.route('/journal', methods=['GET', 'POST'])
 def journal():
-    query = db.session.query(JournalEntry).options(db.joinedload(JournalEntry.transaction).joinedload(Transaction.source_account)).join(Account, JournalEntry.debit_account_id == Account.id).filter(JournalEntry.client_id == session['client_id'])
+    query = db.session.query(JournalEntries).options(db.joinedload(JournalEntries.transaction).joinedload(Transaction.source_account)).join(Account, JournalEntries.debit_account_id == Account.id).filter(JournalEntries.client_id == session['client_id'])
 
-    categories = [c[0] for c in db.session.query(JournalEntry.category).filter(JournalEntry.client_id == session['client_id']).distinct().all() if c[0]]
+    categories = [c[0] for c in db.session.query(JournalEntries.category).filter(JournalEntries.client_id == session['client_id']).distinct().all() if c[0]]
 
     # Default to no filters, but retain filter values from form
     filters = {
@@ -25,27 +25,27 @@ def journal():
 
     if request.method == 'POST':
         if filters['start_date']:
-            query = query.filter(JournalEntry.date >= filters['start_date'])
+            query = query.filter(JournalEntries.date >= filters['start_date'])
         if filters['end_date']:
-            query = query.filter(JournalEntry.date <= filters['end_date'])
+            query = query.filter(JournalEntries.date <= filters['end_date'])
         if filters['description']:
-            query = query.filter(JournalEntry.description.ilike(f"%{filters['description']}"))
+            query = query.filter(JournalEntries.description.ilike(f"%{filters['description']}"))
         if filters['account_id']:
-            query = query.filter(db.or_(JournalEntry.debit_account_id == filters['account_id'], JournalEntry.credit_account_id == filters['account_id']))
+            query = query.filter(db.or_(JournalEntries.debit_account_id == filters['account_id'], JournalEntries.credit_account_id == filters['account_id']))
         if filters['categories']:
-            query = query.filter(JournalEntry.category.in_(filters['categories']))
+            query = query.filter(JournalEntries.category.in_(filters['categories']))
         if filters['transaction_type']:
-            query = query.filter(JournalEntry.transaction_type == filters['transaction_type'])
+            query = query.filter(JournalEntries.transaction_type == filters['transaction_type'])
 
     # Sorting logic
     sort_by = request.args.get('sort', 'date')
     direction = request.args.get('direction', 'desc')
 
-    sort_column = getattr(JournalEntry, sort_by, JournalEntry.date)
+    sort_column = getattr(JournalEntries, sort_by, JournalEntries.date)
     if sort_by == 'debit_account':
-        sort_column = JournalEntry.debit_account.has(Account.name)
+        sort_column = JournalEntries.debit_account.has(Account.name)
     elif sort_by == 'credit_account':
-        sort_column = JournalEntry.credit_account.has(Account.name)
+        sort_column = JournalEntries.credit_account.has(Account.name)
 
     if direction == 'asc':
         query = query.order_by(sort_column.asc())
@@ -82,7 +82,7 @@ def add_entry():
     amount = abs(float(request.form['amount']))
     category = request.form['category']
     notes = request.form.get('notes')
-    new_entry = JournalEntry(date=date, description=description, debit_account_id=debit_account_id, credit_account_id=credit_account_id, amount=amount, category=category, notes=notes, client_id=session['client_id'])
+    new_entry = JournalEntries(date=date, description=description, debit_account_id=debit_account_id, credit_account_id=credit_account_id, amount=amount, category=category, notes=notes, client_id=session['client_id'])
     db.session.add(new_entry)
     update_all_balances(session['client_id'])
     db.session.commit()
@@ -92,7 +92,7 @@ def add_entry():
 
 @journal_bp.route('/edit_entry/<int:entry_id>', methods=['GET', 'POST'])
 def edit_entry(entry_id):
-    entry = JournalEntry.query.get_or_404(entry_id)
+    entry = JournalEntries.query.get_or_404(entry_id)
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
     if request.method == 'POST':
@@ -114,7 +114,7 @@ def edit_entry(entry_id):
 
 @journal_bp.route('/delete_entry/<int:entry_id>')
 def delete_entry(entry_id):
-    entry = JournalEntry.query.get_or_404(entry_id)
+    entry = JournalEntries.query.get_or_404(entry_id)
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
     log_audit(f'Deleted journal entry: {entry.description}')
@@ -141,7 +141,7 @@ def delete_entry(entry_id):
 
 @journal_bp.route('/unapprove_transaction/<int:entry_id>')
 def unapprove_transaction(entry_id):
-    entry = JournalEntry.query.get_or_404(entry_id)
+    entry = JournalEntries.query.get_or_404(entry_id)
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
 
@@ -159,7 +159,7 @@ def unapprove_transaction(entry_id):
 
 @journal_bp.route('/toggle_lock/<int:entry_id>')
 def toggle_lock(entry_id):
-    entry = JournalEntry.query.get_or_404(entry_id)
+    entry = JournalEntries.query.get_or_404(entry_id)
     if entry.client_id != session['client_id']:
         return "Unauthorized", 403
     entry.locked = not entry.locked
@@ -176,7 +176,7 @@ def bulk_actions():
         return redirect(url_for('journal.journal'))
 
     if action == 'delete':
-        entries = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
+        entries = JournalEntries.query.filter(JournalEntries.id.in_(entry_ids), JournalEntries.client_id == session['client_id']).all()
         transaction_ids_to_delete = [entry.transaction_id for entry in entries if entry.transaction_id]
         
         for entry in entries:
@@ -194,19 +194,19 @@ def bulk_actions():
             flash('No transaction type selected.', 'warning')
             return redirect(url_for('journal.journal'))
         
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'transaction_type': transaction_type}, synchronize_session=False)
+        JournalEntries.query.filter(JournalEntries.id.in_(entry_ids), JournalEntries.client_id == session['client_id']).update({'transaction_type': transaction_type}, synchronize_session=False)
         db.session.commit()
         flash(f'{len(entry_ids)} entries updated successfully.', 'success')
     elif action == 'lock':
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
+        JournalEntries.query.filter(JournalEntries.id.in_(entry_ids), JournalEntries.client_id == session['client_id']).update({'locked': True}, synchronize_session=False)
         db.session.commit()
         flash(f'{len(entry_ids)} entries locked successfully.', 'success')
     elif action == 'unlock':
-        JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
+        JournalEntries.query.filter(JournalEntries.id.in_(entry_ids), JournalEntries.client_id == session['client_id']).update({'locked': False}, synchronize_session=False)
         db.session.commit()
         flash(f'{len(entry_ids)} entries unlocked successfully.', 'success')
     elif action == 'unapprove':
-        entries = JournalEntry.query.filter(JournalEntry.id.in_(entry_ids), JournalEntry.client_id == session['client_id']).all()
+        entries = JournalEntries.query.filter(JournalEntries.id.in_(entry_ids), JournalEntries.client_id == session['client_id']).all()
         for entry in entries:
             if entry.transaction_id:
                 transaction = Transaction.query.get(entry.transaction_id)
@@ -221,7 +221,7 @@ def bulk_actions():
 
 @journal_bp.route('/delete_duplicate_journal_entries')
 def delete_duplicate_journal_entries():
-    all_entries = JournalEntry.query.filter_by(client_id=session['client_id']).all()
+    all_entries = JournalEntries.query.filter_by(client_id=session['client_id']).all()
 
     seen = {}
     duplicates_to_delete = []
@@ -233,7 +233,7 @@ def delete_duplicate_journal_entries():
             seen[key] = entry.id
 
     if duplicates_to_delete:
-        JournalEntry.query.filter(JournalEntry.id.in_(duplicates_to_delete)).delete(synchronize_session=False)
+        JournalEntries.query.filter(JournalEntries.id.in_(duplicates_to_delete)).delete(synchronize_session=False)
         update_all_balances(session['client_id'])
         db.session.commit()
         flash(f'{len(duplicates_to_delete)} duplicate journal entries deleted successfully.', 'success')

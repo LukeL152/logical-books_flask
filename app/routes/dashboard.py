@@ -1,9 +1,10 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from app import db
-from app.models import JournalEntry, Account, Budget, Category
+from app.models import JournalEntries, Account, Budget
 from datetime import datetime, timedelta
 import json
-from app.utils import get_account_tree
+from dateutil.relativedelta import relativedelta
+from app.utils import get_account_tree, get_budgets_actual_spent, get_num_periods
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -21,35 +22,35 @@ def dashboard():
         start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
         end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
     else:
-        period = request.args.get('period')
-        if period == 'ytd':
-            start_date = today.replace(month=1, day=1)
-        elif period == 'current_month':
+        period = request.args.get('period', 'ytd') # Default to ytd
+        if period == 'current_month':
             start_date = today.replace(day=1)
         elif period == 'last_3_months':
             start_date = today - timedelta(days=90)
-        else: # Default to last 6 months
+        elif period == 'last_6_months':
             start_date = today - timedelta(days=180)
+        else: # Default to ytd
+            start_date = today.replace(month=1, day=1)
 
     # Monthly data for bar chart
     income_by_month_query = db.session.query(
-        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        db.func.strftime('%Y-%m', JournalEntries.date).label('month'),
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.credit_account_id == Account.id).filter(
         Account.type.in_(['Revenue', 'Income']),
-        JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date,
-        JournalEntry.date <= end_date
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date
     ).group_by('month')
 
     expense_by_month_query = db.session.query(
-        db.func.strftime('%Y-%m', JournalEntry.date).label('month'),
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        db.func.strftime('%Y-%m', JournalEntries.date).label('month'),
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
-        JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date,
-        JournalEntry.date <= end_date
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date
     ).group_by('month')
 
     income_by_month = {r.month: r.total for r in income_by_month_query.all()}
@@ -63,16 +64,16 @@ def dashboard():
 
     # Expense breakdown for the selected period for the pie chart
     expense_breakdown_query = db.session.query(
-        JournalEntry.category,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.debit_account_id == Account.id).filter(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.debit_account_id == Account.id).filter(
         Account.type == 'Expense',
-        JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date,
-        JournalEntry.date <= end_date,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category)
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date,
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category)
 
     expense_breakdown = expense_breakdown_query.all()
 
@@ -81,16 +82,16 @@ def dashboard():
 
     # Income breakdown for the selected period for the pie chart
     income_breakdown_query = db.session.query(
-        JournalEntry.category,
-        db.func.sum(JournalEntry.amount).label('total')
-    ).join(Account, JournalEntry.credit_account_id == Account.id).filter(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).join(Account, JournalEntries.credit_account_id == Account.id).filter(
         Account.type.in_(['Revenue', 'Income']),
-        JournalEntry.client_id == session['client_id'],
-        JournalEntry.date >= start_date,
-        JournalEntry.date <= end_date,
-        JournalEntry.category != None,
-        JournalEntry.category != ''
-    ).group_by(JournalEntry.category)
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date,
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category)
 
     income_breakdown = income_breakdown_query.all()
 
@@ -110,112 +111,116 @@ def dashboard():
     m_expenses = abs(expenses_this_period)
     net_profit = m_income - m_expenses
 
+    # Calculate average KPIs
+    num_days = (end_date - start_date).days + 1
+    num_months = get_num_periods(start_date, end_date, 'monthly')
+
+    avg_daily_income = m_income / num_days if num_days > 0 else 0
+    avg_monthly_income = m_income / num_months if num_months > 0 else 0
+
+    avg_daily_expense = m_expenses / num_days if num_days > 0 else 0
+    avg_monthly_expense = m_expenses / num_months if num_months > 0 else 0
+
+    avg_daily_net_income = net_profit / num_days if num_days > 0 else 0
+    avg_monthly_net_income = net_profit / num_months if num_months > 0 else 0
+
     # Account summaries (these are not date-filtered in the original, so keep as is)
     asset_accounts = Account.query.filter_by(type='Asset', client_id=session['client_id']).all()
     liability_accounts = Account.query.filter_by(type='Liability', client_id=session['client_id']).all()
 
     asset_balances = {}
     for account in asset_accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id).scalar() or 0
         asset_balances[account.name] = account.opening_balance + debits - credits
 
     liability_balances = {}
     for account in liability_accounts:
-        debits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.debit_account_id == account.id).scalar() or 0
-        credits = db.session.query(db.func.sum(JournalEntry.amount)).filter(JournalEntry.credit_account_id == account.id).scalar() or 0
+        debits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.debit_account_id == account.id).scalar() or 0
+        credits = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.credit_account_id == account.id).scalar() or 0
         liability_balances[account.name] = account.opening_balance + credits - debits
 
     # Budget performance data
-    def get_all_descendants(budget):
-        descendants = []
-        for child in budget.children:
-            descendants.append(child)
-            descendants.extend(get_all_descendants(child))
-        return descendants
-
     budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=None).all()
+    budget_ids = [b.id for b in budgets]
+    actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
+
     performance_data = []
+    all_budgets_for_summary = []
+
     for budget in budgets:
-        all_budgets_in_tree = get_all_descendants(budget)
-        total_budgeted = budget.amount + sum(b.amount for b in all_budgets_in_tree)
+        num_periods = get_num_periods(start_date, end_date, budget.period)
+        total_budgeted = budget.total_budgeted * num_periods
+        actual_spent = actual_spendings.get(budget.id, 0.0)
+        difference = total_budgeted - actual_spent
 
+        all_budgets_for_summary.append({
+            'name': budget.name,
+            'budgeted': total_budgeted,
+            'actual': actual_spent,
+            'difference': difference,
+            'id': budget.id
+        })
+
+    # Generate historical data for all periods within the selected date range
         history = []
-        today = datetime.now().date()
-        current_date = budget.start_date
+        
+        # Calculate the number of periods based on the dashboard's date range
+        num_periods_to_display = get_num_periods(start_date, end_date, budget.period)
 
-        while current_date <= today:
+        # Iterate backwards from the dashboard's end_date
+        current_end_of_period = end_date
+        for i in range(num_periods_to_display):
             if budget.period == 'monthly':
-                period_start = current_date.replace(day=1)
-                next_month = current_date.replace(day=28) + timedelta(days=4)
-                period_end = next_month - timedelta(days=next_month.day)
+                period_start = current_end_of_period.replace(day=1)
+                period_end = current_end_of_period
                 period_name = period_start.strftime("%B %Y")
-                current_date = period_end + timedelta(days=1)
+                current_end_of_period = period_start - timedelta(days=1) # Move to end of previous month
             elif budget.period == 'quarterly':
-                quarter = (current_date.month - 1) // 3 + 1
-                period_start = datetime(current_date.year, 3 * quarter - 2, 1).date()
-                period_end = (datetime(current_date.year, 3 * quarter % 12 + 1, 1) - timedelta(days=1)).date()
-                period_name = f"Q{quarter} {period_start.year}"
-                current_date = period_end + timedelta(days=1)
+                # Calculate start and end of current quarter
+                current_quarter_start_month = (current_end_of_period.month - 1) // 3 * 3 + 1
+                period_start = current_end_of_period.replace(month=current_quarter_start_month, day=1)
+                period_end = (period_start + relativedelta(months=3)) - timedelta(days=1)
+                period_name = f"Q{(current_quarter_start_month - 1) // 3 + 1} {current_end_of_period.year}"
+                current_end_of_period = period_start - timedelta(days=1) # Move to end of previous quarter
             else: # yearly
-                period_start = datetime(current_date.year, 1, 1).date()
-                period_end = datetime(current_date.year, 12, 31).date()
-                period_name = str(period_start.year)
-                current_date = period_end + timedelta(days=1)
+                period_start = current_end_of_period.replace(month=1, day=1)
+                period_end = current_end_of_period.replace(month=12, day=31)
+                period_name = str(current_end_of_period.year)
+                current_end_of_period = period_start - timedelta(days=1) # Move to end of previous year
 
-            all_categories = []
-            all_keywords = []
-            for b in all_budgets_in_tree:
-                for c in b.categories:
-                    all_categories.append(c.name)
-                if b.keywords:
-                    all_keywords.extend([k.strip() for k in b.keywords.split(',')])
+            # Ensure the period is within the dashboard's overall start_date and end_date
+            effective_period_start = max(period_start, start_date)
+            effective_period_end = min(period_end, end_date)
 
-            actual_spent = 0
-            if all_categories or all_keywords:
-                base_filters = [
-                    JournalEntry.client_id == session['client_id'],
-                    JournalEntry.date >= period_start,
-                    JournalEntry.date <= period_end,
-                    Account.type == 'Expense' # This filter should always apply
-                ]
-
-                category_conditions = []
-                if all_categories:
-                    category_conditions.append(JournalEntry.category.in_(all_categories))
-
-                keyword_conditions = []
-                if all_keywords:
-                    keyword_conditions.append(db.or_(*[JournalEntry.description.ilike(f'%{kw}%') for kw in all_keywords]))
-
-                # Combine category and keyword conditions with OR
-                combined_conditions = []
-                if category_conditions:
-                    combined_conditions.append(db.or_(*category_conditions))
-                if keyword_conditions:
-                    combined_conditions.append(db.or_(*keyword_conditions))
-
-                final_filters = base_filters
-                if combined_conditions:
-                    final_filters.append(db.or_(*combined_conditions))
-
-                actual_spent = db.session.query(db.func.sum(JournalEntry.amount)) \
-                    .join(Account, JournalEntry.debit_account_id == Account.id) \
-                    .filter(*final_filters).scalar() or 0
-
+            hist_actual_spendings = get_budgets_actual_spent([budget.id], effective_period_start, effective_period_end)
+            hist_actual_spent = hist_actual_spendings.get(budget.id, 0.0)
             history.append({
                 'period_name': period_name,
-                'budgeted': total_budgeted,
-                'actual': actual_spent,
-                'difference': total_budgeted - actual_spent
+                'budgeted': budget.total_budgeted,
+                'actual': hist_actual_spent,
+                'difference': budget.total_budgeted - hist_actual_spent
             })
+        history.reverse()
+        history.reverse()
 
         performance_data.append({
+            'id': budget.id,
             'name': budget.name,
             'period': budget.period,
             'amount': total_budgeted,
             'history': history
         })
+
+    # Calculate Overall Budget Health
+    overall_budgeted = sum(b['budgeted'] for b in all_budgets_for_summary)
+    overall_actual = sum(b['actual'] for b in all_budgets_for_summary)
+    overall_difference = overall_budgeted - overall_actual
+
+    # Identify Top/Bottom Performers
+    sorted_budgets = sorted(all_budgets_for_summary, key=lambda x: x['difference'], reverse=True)
+    top_under_budget = sorted_budgets[:3]
+    top_over_budget = sorted_budgets[-3:]
 
     return render_template('dashboard.html', 
                            m_income=m_income, 
@@ -233,4 +238,15 @@ def dashboard():
                            income_pie_chart_data=income_pie_chart_data,
                            start_date=start_date.strftime('%Y-%m-%d'),
                            end_date=end_date.strftime('%Y-%m-%d'),
-                           performance_data=performance_data)
+                           performance_data=performance_data,
+                           overall_budgeted=overall_budgeted,
+                           overall_actual=overall_actual,
+                           overall_difference=overall_difference,
+                           top_under_budget=top_under_budget,
+                           top_over_budget=top_over_budget,
+                           avg_daily_income=avg_daily_income,
+                           avg_monthly_income=avg_monthly_income,
+                           avg_daily_expense=avg_daily_expense,
+                           avg_monthly_expense=avg_monthly_expense,
+                           avg_daily_net_income=avg_daily_net_income,
+                           avg_monthly_net_income=avg_monthly_net_income)

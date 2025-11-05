@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import FixedAsset, Depreciation, Account, JournalEntry
+from app.models import FixedAsset, Depreciation, Account, JournalEntries
 from app.utils import log_audit
 from datetime import datetime
 
@@ -37,7 +37,7 @@ def add_fixed_asset():
         fixed_asset_account = Account.query.filter_by(type='Fixed Asset', client_id=session['client_id']).first()
         cash_account = Account.query.filter_by(type='Asset', name='Cash', client_id=session['client_id']).first()
         if fixed_asset_account and cash_account:
-            new_entry = JournalEntry(
+            new_entry = JournalEntries(
                 date=purchase_date,
                 description=f"Purchase of {name}",
                 debit_account_id=fixed_asset_account.id,
@@ -62,10 +62,10 @@ def delete_fixed_asset(asset_id):
     # Delete journal entries associated with depreciation for this asset
     depreciation_entries = Depreciation.query.filter_by(fixed_asset_id=asset.id).all()
     for dep_entry in depreciation_entries:
-        JournalEntry.query.filter_by(description=f"Depreciation for {asset.name}", date=dep_entry.date).delete()
+        JournalEntries.query.filter_by(description=f"Depreciation for {asset.name}", date=dep_entry.date).delete()
 
     # Delete the journal entry for the purchase of the asset
-    JournalEntry.query.filter_by(description=f"Purchase of {asset.name}", date=asset.purchase_date).delete()
+    JournalEntries.query.filter_by(description=f"Purchase of {asset.name}", date=asset.purchase_date).delete()
 
     # Delete all depreciation entries for this asset
     Depreciation.query.filter_by(fixed_asset_id=asset.id).delete()
