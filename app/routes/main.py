@@ -56,15 +56,6 @@ def add_notification():
             return redirect(url_for('main.add_notification'))
     return render_template('add_notification.html')
 
-@main_bp.route('/notifications/delete/<int:notification_id>', methods=['DELETE'])
-def delete_notification(notification_id):
-    notification = Notification.query.get(notification_id)
-    if notification:
-        db.session.delete(notification)
-        db.session.commit()
-        return jsonify({'success': True})
-    return jsonify({'success': False}), 404
-
 @main_bp.route('/notifications')
 def notifications():
     notifications = Notification.query.filter_by(is_read=False).order_by(Notification.created_at.desc()).all()

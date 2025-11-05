@@ -1,6 +1,6 @@
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, jsonify
 from app import db
-from app.models import NotificationRule
+from app.models import NotificationRule, Notification
 
 notifications_bp = Blueprint('notifications', __name__)
 
@@ -38,3 +38,12 @@ def delete_notification_rule(rule_id):
     else:
         flash('Failed to delete notification rule.', 'danger')
     return redirect(url_for('notifications.notification_rules'))
+
+@notifications_bp.route('/delete/<int:notification_id>', methods=['DELETE'])
+def delete_notification(notification_id):
+    notification = Notification.query.get(notification_id)
+    if notification:
+        db.session.delete(notification)
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'success': False}), 404

@@ -129,6 +129,30 @@
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script>
+        function fetchNotifications() {
+            fetch('{{ url_for('main.notifications') }}')
+                .then(response => response.json())
+                .then(data => {
+                    const countSpan = document.getElementById('unread-notifications-count');
+                    const dropdown = document.getElementById('notifications-dropdown');
+                    
+                    countSpan.textContent = data.length;
+                    if (data.length > 0) {
+                        countSpan.classList.remove('d-none');
+                        dropdown.innerHTML = '';
+                        data.forEach(notification => {
+                            const li = document.createElement('li');
+                            li.innerHTML = `<a class="dropdown-item" href="#">${notification.message}</a><button class="btn btn-sm btn-danger float-end" onclick="deleteNotification(${notification.id})">x</button>`;
+                            dropdown.appendChild(li);
+                        });
+                    } else {
+                        countSpan.classList.add('d-none');
+                        dropdown.innerHTML = '<li><a class="dropdown-item" href="#">No new notifications</a></li>';
+                    }
+                })
+                .catch(error => console.error('Error fetching notifications:', error));
+        }
+
         function deleteNotification(notificationId) {
             fetch(`/notifications/delete/${notificationId}`, {
                 method: 'DELETE',
@@ -144,30 +168,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            function fetchNotifications() {
-                fetch('{{ url_for('main.notifications') }}')
-                    .then(response => response.json())
-                    .then(data => {
-                        const countSpan = document.getElementById('unread-notifications-count');
-                        const dropdown = document.getElementById('notifications-dropdown');
-                        
-                        countSpan.textContent = data.length;
-                        if (data.length > 0) {
-                            countSpan.classList.remove('d-none');
-                            dropdown.innerHTML = '';
-                            data.forEach(notification => {
-                                const li = document.createElement('li');
-                                li.innerHTML = `<a class="dropdown-item" href="#">${notification.message}</a><button class="btn btn-sm btn-danger float-end" onclick="deleteNotification(${notification.id})">x</button>`;
-                                dropdown.appendChild(li);
-                            });
-                        } else {
-                            countSpan.classList.add('d-none');
-                            dropdown.innerHTML = '<li><a class="dropdown-item" href="#">No new notifications</a></li>';
-                        }
-                    })
-                    .catch(error => console.error('Error fetching notifications:', error));
-            }
-
             // Fetch notifications every 30 seconds
             setInterval(fetchNotifications, 30000);
             fetchNotifications(); // Initial fetch
