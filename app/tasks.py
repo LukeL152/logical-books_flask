@@ -195,3 +195,29 @@ def check_budgets():
                     notification = Notification(user_id=user.id, message=message)
                     db.session.add(notification)
         db.session.commit()
+
+def check_notification_rules():
+    with scheduler.app.app_context():
+        today = datetime.now().date()
+        clients = Client.query.all()
+        for client in clients:
+            rules = NotificationRule.query.filter_by(client_id=client.id).all()
+            for rule in rules:
+                if rule.criteria_type == 'daily_spending':
+                    total_spent_today = db.session.query(db.func.sum(JournalEntries.amount)) \
+                        .join(Account, JournalEntries.debit_account_id == Account.id) \
+                        .filter(Account.type == 'Expense', JournalEntries.client_id == client.id, JournalEntries.date == today) \
+                        .scalar() or 0
+
+                    if total_spent_today > rule.criteria_value:
+                        message = f"You have spent {total_spent_today:.2f} today, which exceeds your daily spending limit of {rule.criteria_value:.2f}."
+                        if rule.notification_method == 'in_app':
+                            notification = Notification(message=message)
+                            db.session.add(notification)
+                        elif rule.notification_method == 'email':
+                            # Placeholder for sending email
+                            pass
+                        elif rule.notification_method == 'sms':
+                            # Placeholder for sending SMS
+                            pass
+        db.session.commit()

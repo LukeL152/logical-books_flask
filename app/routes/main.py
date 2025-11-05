@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, session, redirect, url_for, reques
 from flask_login import login_required, current_user, login_user, logout_user
 from app.models import Client, Notification, User
 from flask import jsonify
+from app import db
 
 main_bp = Blueprint('main', __name__)
 
@@ -43,8 +44,28 @@ def bookkeeping_guide():
         content = f.read()
     return render_template('bookkeeping_guide.html', content=content)
 
+@main_bp.route('/add-notification', methods=['GET', 'POST'])
+def add_notification():
+    if request.method == 'POST':
+        message = request.form.get('message')
+        if message:
+            notification = Notification(message=message)
+            db.session.add(notification)
+            db.session.commit()
+            flash('Notification added successfully!', 'success')
+            return redirect(url_for('main.add_notification'))
+    return render_template('add_notification.html')
+
+@main_bp.route('/notifications/delete/<int:notification_id>', methods=['DELETE'])
+def delete_notification(notification_id):
+    notification = Notification.query.get(notification_id)
+    if notification:
+        db.session.delete(notification)
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'success': False}), 404
+
 @main_bp.route('/notifications')
-@login_required
 def notifications():
-    notifications = Notification.query.filter_by(user_id=current_user.id, is_read=False).order_by(Notification.created_at.desc()).all()
+    notifications = Notification.query.filter_by(is_read=False).order_by(Notification.created_at.desc()).all()
     return jsonify([{'id': n.id, 'message': n.message, 'created_at': n.created_at} for n in notifications])

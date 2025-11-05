@@ -32,6 +32,22 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 def create_app():
     app = Flask(__name__)
+
+    from app.routes.main import main_bp
+    from app.routes.accounts import accounts_bp
+    from app.routes.clients import clients_bp
+    from app.routes.dashboard import dashboard_bp
+    from app.routes.fixed_assets import fixed_assets_bp
+    from app.routes.inventory import inventory_bp
+    from app.routes.journal import journal_bp
+    from app.routes.plaid import plaid_bp
+    from app.routes.reports import reports_bp
+    from app.routes.settings import settings_bp
+    from app.routes.transactions import transactions_bp
+    from app.routes.vendors import vendors_bp
+    from app.routes.notifications import notifications_bp
+    from app.routes.guides import guides_bp
+
     app.config['SECRET_KEY'] = 'your_secret_key'  # Change this in a real application
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'bookkeeping.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -83,6 +99,7 @@ def create_app():
         scheduler.add_job(id='create_recurring_journal_entries', func=tasks.create_recurring_journal_entries, trigger='cron', day=1, hour=0)
         scheduler.add_job(id='cleanup_pending_plaid_links', func=tasks.cleanup_pending_plaid_links, trigger='cron', day='*', hour=2)
         scheduler.add_job(id='check_budgets', func=tasks.check_budgets, trigger='cron', day='*', hour=3)
+        scheduler.add_job(id='check_notification_rules', func=tasks.check_notification_rules, trigger='cron', day='*', hour=4)
 
     app.json_encoder = CustomJSONEncoder
 
@@ -94,43 +111,19 @@ def create_app():
     def nl2br(s):
         return Markup(s.replace('\n', '<br>\n')) if s else ''
 
-    from app.routes.main import main_bp
     app.register_blueprint(main_bp)
-
-    from app.routes.transactions import transactions_bp
-    app.register_blueprint(transactions_bp)
-
-    from app.routes.accounts import accounts_bp
-    app.register_blueprint(accounts_bp)
-
-    from app.routes.journal import journal_bp
-    app.register_blueprint(journal_bp)
-
-    from app.routes.reports import reports_bp
-    app.register_blueprint(reports_bp)
-
-    from app.routes.settings import settings_bp
-    app.register_blueprint(settings_bp)
-
-    from app.routes.plaid import plaid_bp
-    app.register_blueprint(plaid_bp)
-
-    from app.routes.inventory import inventory_bp
-    app.register_blueprint(inventory_bp)
-
-    from app.routes.fixed_assets import fixed_assets_bp
-    app.register_blueprint(fixed_assets_bp)
-
-    from app.routes.clients import clients_bp
-    app.register_blueprint(clients_bp)
-
-    from app.routes.vendors import vendors_bp
-    app.register_blueprint(vendors_bp)
-
-    from app.routes.dashboard import dashboard_bp
-    app.register_blueprint(dashboard_bp)
-
-    from app.routes.guides import guides_bp
+    app.register_blueprint(accounts_bp, url_prefix='/accounts')
+    app.register_blueprint(clients_bp, url_prefix='/clients')
+    app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
+    app.register_blueprint(fixed_assets_bp, url_prefix='/fixed_assets')
+    app.register_blueprint(inventory_bp, url_prefix='/inventory')
+    app.register_blueprint(journal_bp, url_prefix='/journal')
+    app.register_blueprint(plaid_bp, url_prefix='/plaid')
+    app.register_blueprint(reports_bp, url_prefix='/reports')
+    app.register_blueprint(settings_bp, url_prefix='/settings')
+    app.register_blueprint(transactions_bp, url_prefix='/transactions')
+    app.register_blueprint(vendors_bp, url_prefix='/vendors')
+    app.register_blueprint(notifications_bp, url_prefix='/notifications')
     app.register_blueprint(guides_bp)
 
     from app import commands

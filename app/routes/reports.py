@@ -332,6 +332,11 @@ def analysis():
                            cash_at_beginning_of_period=cash_at_beginning_of_period,
                            cash_at_end_of_period=cash_at_end_of_period)
 
+@reports_bp.route('/category_transactions/<category_name>')
+def category_transactions(category_name):
+    transactions = JournalEntries.query.filter_by(client_id=session['client_id'], category=category_name).order_by(JournalEntries.date.desc()).all()
+    return render_template('category_transactions.html', transactions=transactions, category_name=category_name)
+
 
 
 @reports_bp.route('/budget', methods=['GET', 'POST'])

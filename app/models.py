@@ -464,9 +464,22 @@ class Reconciliation(db.Model):
     def __repr__(self):
         return f'<Reconciliation {self.statement_date} - {self.statement_balance}>'
 
+class NotificationRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    criteria_type = db.Column(db.String(50), nullable=False) # e.g., 'daily_spending'
+    criteria_value = db.Column(db.Float, nullable=False)
+    notification_method = db.Column(db.String(50), nullable=False) # e.g., 'in_app', 'email', 'sms'
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+
+    client = db.relationship('Client', backref='notification_rules')
+
+    def __repr__(self):
+        return f'<NotificationRule {self.name}>'
+
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     message = db.Column(db.String(500), nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
