@@ -51,6 +51,9 @@
 <script>
 $(document).ready(function() {
     $('#parent_id').select2();
+    $('#category').select2({
+        tags: true
+    });
 });
 </script>
 {% endblock %}

@@ -107,7 +107,7 @@
         // Historical Performance Chart
         var hpCtx = document.getElementById('historicalPerformanceChart').getContext('2d');
         var historicalPerformanceChart = new Chart(hpCtx, {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: [{% for item in historical_performance %}'{{ item.period_name }}'{% if not loop.last %}, {% endif %}{% endfor %}],
                 datasets: [

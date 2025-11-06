@@ -6,7 +6,7 @@ from datetime import datetime
 
 fixed_assets_bp = Blueprint('fixed_assets', __name__)
 
-@fixed_assets_bp.route('/fixed_assets')
+@fixed_assets_bp.route('/')
 def fixed_assets():
     assets = FixedAsset.query.filter_by(client_id=session['client_id']).order_by(FixedAsset.purchase_date.desc()).all()
     return render_template('fixed_assets.html', assets=assets)

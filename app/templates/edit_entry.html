@@ -51,6 +51,9 @@
 $(document).ready(function() {
     $('#debit_account_id').select2();
     $('#credit_account_id').select2();
+    $('#category').select2({
+        tags: true
+    });
 });
 </script>
 {% endblock %}

@@ -115,6 +115,12 @@ $(document).ready(function() {
     $('#source_account_id').select2();
     $('#new_debit_account_id').select2();
     $('#new_credit_account_id').select2();
+    $('#category_condition').select2({
+        tags: true
+    });
+    $('#new_category').select2({
+        tags: true
+    });
 });
 </script>
 {% endblock %}

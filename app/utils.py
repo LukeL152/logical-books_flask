@@ -47,7 +47,7 @@ def update_all_balances(client_id):
 
     def _update_balances_recursive(account):
         if not account.children.first():  # It's a leaf node
-            if not account.plaid_accounts:
+            if not account.plaid_account_link:
                 account.current_balance = _calculate_balance(account)
                 account.balance_last_updated = datetime.utcnow()
         else:  # It's a parent account
@@ -105,52 +105,53 @@ def get_account_tree(accounts, start_date=None, end_date=None):
     return account_tree
 
 def get_budgets_actual_spent(budget_ids, start_date, end_date):
-    from app.models import Budget
+    from app.models import Budget, JournalEntries
     budgets = Budget.query.filter(Budget.id.in_(budget_ids)).all()
     if not budgets:
         return {}
 
     client_id = budgets[0].client_id
-    all_budget_trees = {}
-    all_categories = set()
-    all_keywords = set()
+    budget_spending = {budget_id: {'actual_spent': 0.0, 'transaction_ids': set()} for budget_id in budget_ids}
 
     for budget in budgets:
-        descendants = [budget] + budget.get_all_descendants()
-        all_budget_trees[budget.id] = descendants
-        for b in descendants:
-            for cat in b.categories:
-                all_categories.add(cat.name)
+        if budget.name == 'Overall Budget':
+            transactions = JournalEntries.query \
+                .join(Account, JournalEntries.debit_account_id == Account.id) \
+                .filter(Account.type == 'Expense', JournalEntries.client_id == client_id, JournalEntries.date >= start_date, JournalEntries.date <= end_date) \
+                .all()
+            budget_spending[budget.id]['actual_spent'] = sum(t.amount for t in transactions)
+            budget_spending[budget.id]['transaction_ids'] = {t.id for t in transactions}
+        else:
+            budget_categories = {c.name for c in budget.categories}
+            budget_keywords = {k.strip() for k in budget.keywords.split(',')} if budget.keywords else set()
 
+            query_filter = [
+                JournalEntries.client_id == client_id,
+                JournalEntries.date >= start_date,
+                JournalEntries.date <= end_date
+            ]
 
-    journal_filters = [
-        JournalEntries.client_id == client_id,
-        JournalEntries.date >= start_date,
-        JournalEntries.date <= end_date
-    ]
+            category_filter = None
+            if budget_categories:
+                category_filter = JournalEntries.category.in_(budget_categories)
 
-    conditions = []
-    if all_categories:
-        conditions.append(JournalEntries.category.in_(all_categories))
-    if all_keywords:
-        conditions.append(db.or_(*[JournalEntries.description.ilike(f'%{kw}%') for kw in all_keywords]))
-    
-    if conditions:
-        journal_filters.append(db.or_(*conditions))
+            keyword_filter = None
+            if budget_keywords:
+                keyword_filters = []
+                for keyword in budget_keywords:
+                    keyword_filters.append(JournalEntries.description.ilike(f'%{keyword}%'))
+                keyword_filter = db.or_(*keyword_filters)
 
-    transactions = JournalEntries.query.filter(*journal_filters).all()
+            if category_filter is not None and keyword_filter is not None:
+                query_filter.append(db.or_(category_filter, keyword_filter))
+            elif category_filter is not None:
+                query_filter.append(category_filter)
+            elif keyword_filter is not None:
+                query_filter.append(keyword_filter)
 
-    budget_spending = {budget_id: 0.0 for budget_id in budget_ids}
-
-    for budget_id, budget_tree in all_budget_trees.items():
-        budget_categories = set()
-        for b in budget_tree:
-            for cat in b.categories:
-                budget_categories.add(cat.name)
-
-
-        for t in transactions:
-            if t.category in budget_categories:
-                budget_spending[budget_id] += t.amount
+            if len(query_filter) > 3: # client_id, start_date, end_date
+                transactions = JournalEntries.query.filter(*query_filter).all()
+                budget_spending[budget.id]['actual_spent'] = sum(t.amount for t in transactions)
+                budget_spending[budget.id]['transaction_ids'] = {t.id for t in transactions}
 
     return budget_spending

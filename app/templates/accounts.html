@@ -120,6 +120,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize select2 for the form
     $('#parent_id').select2();
+    $('#category').select2({
+        tags: true
+    });
 });
 </script>
 {% endblock %}

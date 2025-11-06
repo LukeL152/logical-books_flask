@@ -128,10 +128,7 @@ class ImportTemplate(db.Model):
     def __repr__(self):
         return f'<ImportTemplate {self.name}>'
 
-budget_keywords = db.Table('budget_keywords',
-    db.Column('budget_id', db.Integer, db.ForeignKey('budget.id'), primary_key=True),
-    db.Column('keyword_id', db.Integer, db.ForeignKey('keyword.id'), primary_key=True)
-)
+
 
 budget_categories = db.Table('budget_categories',
     db.Column('budget_id', db.Integer, db.ForeignKey('budget.id'), primary_key=True),
@@ -157,9 +154,7 @@ class Budget(db.Model):
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('budget.id'))
     parent = db.relationship('Budget', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
-    keywords = db.relationship('Keyword', secondary=budget_keywords,
-                               backref=db.backref('budgets', lazy='dynamic'),
-                               cascade="all, delete")
+    keywords = db.Column(db.String(255), nullable=True)
     categories = db.relationship('Category', secondary=budget_categories,
                                  backref=db.backref('budgets', lazy='dynamic'))
 
@@ -172,6 +167,14 @@ class Budget(db.Model):
             descendants.append(child)
             descendants.extend(child.get_all_descendants())
         return descendants
+
+    def get_level(self):
+        level = 0
+        parent = self.parent
+        while parent:
+            level += 1
+            parent = parent.parent
+        return level
 
     @property
     def total_budgeted(self):
@@ -222,7 +225,7 @@ class Budget(db.Model):
             effective_end = min(period_end, end_date)
 
             actual_spendings = get_budgets_actual_spent([self.id], effective_start, effective_end)
-            actual_spent = actual_spendings.get(self.id, 0.0)
+            actual_spent = actual_spendings.get(self.id, {'actual_spent': 0.0})['actual_spent']
 
             periods.append({
                 'period_name': period_name,
@@ -232,12 +235,7 @@ class Budget(db.Model):
         
         return periods
 
-class Keyword(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
 
-    def __repr__(self):
-        return f'<Keyword {self.name}>'
 
 class FinancialPeriod(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -75,6 +75,10 @@
             <input type="text" id="description" name="description" class="form-control" value="{{ filters.description }}">
         </div>
         <div class="col-md-3">
+            <label for="notes" class="form-label">Notes</label>
+            <input type="text" id="notes" name="notes" class="form-control" value="{{ filters.notes }}">
+        </div>
+        <div class="col-md-3">
             <label for="account_id" class="form-label">Account</label>
             <select id="account_id" name="account_id" class="form-select">
                 <option value="">All</option>
@@ -135,6 +139,7 @@
                 <th>Credit Account</th>
                 <th class="text-end">Amount</th>
                 <th>Category</th>
+                <th>Notes</th>
                 <th>Source Account</th>
                 <th>Actions</th>
             </tr>
@@ -149,6 +154,7 @@
                 <td>{{ entry.credit_account.name }}</td>
                 <td class="text-end">{{ "%.2f"|format(entry.amount) }}</td>
                 <td>{{ entry.category }}</td>
+                <td>{{ entry.notes }}</td>
                 <td>{{ entry.transaction.source_account.name if entry.transaction and entry.transaction.source_account else '' }}</td>
                 <td>
                     <a href="{{ url_for('journal.edit_entry', entry_id=entry.id) }}" class="btn btn-sm btn-primary">Edit</a>
@@ -172,6 +178,12 @@ $(document).ready(function() {
     $('#debit_account_id').select2();
     $('#credit_account_id').select2();
     $('#account_id').select2();
+    $('#category').select2({
+        tags: true
+    });
+    $('#categories').select2({
+        tags: true
+    });
 
     document.getElementById('select-all').addEventListener('click', function(event) {
         var checkboxes = document.querySelectorAll('.entry-checkbox');

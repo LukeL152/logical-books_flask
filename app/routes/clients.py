@@ -2,10 +2,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from app import db
 from app.models import Client, JournalEntries, ImportTemplate, Account, Budget, TransactionRule, PlaidAccount, PlaidItem
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 
 clients_bp = Blueprint('clients', __name__)
 
-@clients_bp.route('/clients')
+@clients_bp.route('/')
 def clients():
     clients = Client.query.order_by(Client.business_name).all()
     return render_template('clients.html', clients=clients)
@@ -39,6 +41,24 @@ def add_client():
             notes=notes
         )
         db.session.add(new_client)
+        db.session.flush()  # Flush to get the new_client.id
+
+        # Create the Overall Budget
+        today = datetime.now().date()
+        start_date = today.replace(day=1)
+        end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
+
+        overall_budget = Budget(
+            name="Overall Budget",
+            amount=0,
+            period="monthly",
+            start_date=start_date,
+            end_date=end_date,
+            client_id=new_client.id,
+            parent_id=None
+        )
+        db.session.add(overall_budget)
+
         db.session.commit()
         flash('Client added successfully!', 'success')
         return redirect(url_for('clients.clients'))

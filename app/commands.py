@@ -1,7 +1,7 @@
 import click
 from flask.cli import with_appcontext
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from app.models import PlaidItem, Client, Vendor, Account, Budget, TransactionRule, FixedAsset, Product, Inventory, Sale, RecurringTransaction, PlaidAccount, Transaction, JournalEntries, Role, User, Document, ImportTemplate, Depreciation, FinancialPeriod, AuditTrail
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
@@ -11,6 +11,32 @@ from flask import current_app
 import os
 import pandas as pd
 import numpy as np
+
+from dateutil.relativedelta import relativedelta
+
+@click.command('create-overall-budgets')
+@with_appcontext
+def create_overall_budgets():
+    """Creates an 'Overall Budget' for clients who don't have one."""
+    clients = Client.query.all()
+    for client in clients:
+        overall_budget = Budget.query.filter_by(client_id=client.id, name='Overall Budget').first()
+        if not overall_budget:
+            today = datetime.now().date()
+            start_date = today.replace(day=1)
+            end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
+
+            new_budget = Budget(
+                name='Overall Budget',
+                amount=0,
+                period='monthly',
+                start_date=start_date,
+                end_date=end_date,
+                client_id=client.id
+            )
+            db.session.add(new_budget)
+            print(f"Created 'Overall Budget' for {client.business_name}")
+    db.session.commit()
 
 def json_serial_for_cli(obj):
     """JSON serializer for objects not serializable by default json code"""

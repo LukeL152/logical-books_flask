@@ -233,78 +233,51 @@
                 </div>
             </div>
 
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">Top Under Budget</div>
-                        <ul class="list-group list-group-flush">
-                            {% for budget in top_under_budget %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    {{ budget.name }}
-                                    <span class="badge bg-success rounded-pill">${{ "%.2f"|format(budget.difference) }}</span>
-                                </li>
-                            {% else %}
-                                <li class="list-group-item">No budgets under budget.</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">Top Over Budget</div>
-                        <ul class="list-group list-group-flush">
-                            {% for budget in top_over_budget %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    {{ budget.name }}
-                                    <span class="badge bg-danger rounded-pill">${{ "%.2f"|format(budget.difference) }}</span>
-                                </li>
-                            {% else %}
-                                <li class="list-group-item">No budgets over budget.</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
+
 
             {% for item in performance_data %}
+            {% if item.id == 'miscellaneous' %}
             <div class="card mb-4">
                 <div class="card-header">
                     <h2 class="h5 mb-0">{{ item.name }}</h2>
                 </div>
                 <div class="card-body">
+                    <p class="card-text fs-4">${{ "%.2f"|format(item.actual_spent) }}</p>
+                </div>
+            </div>
+            {% else %}
+            <div class="card mb-4" data-id="{{ item.id }}" data-parent-id="{{ item.parent_id or '' }}" {% if item.parent_id %}style="display: none;"{% endif %}>
+                <div class="card-header">
+                    <h2 class="h5 mb-0" style="padding-left: {{ item.level * 20 }}px;">
+                        {% if item.has_children %}
+                            <i class="bi bi-chevron-right expand-icon" style="cursor: pointer;"></i>
+                        {% endif %}
+                        {{ item.name }}
+                    </h2>
+                </div>
+                <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6">
-                            <canvas id="chart-{{ loop.index }}"></canvas>
-                        </div>
-                        <div class="col-md-6">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Period</th>
-                                        <th class="text-end">Budgeted</th>
-                                        <th class="text-end">Actual</th>
-                                        <th class="text-end">Difference</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for row in item.history %}
-                                    <tr>
-                                        <td>{{ row.period_name }}</td>
-                                        <td class="text-end">{{ "%.2f"|format(row.budgeted) }}</td>
-                                        <td class="text-end">{{ "%.2f"|format(row.actual) }}</td>
-                                        <td class="text-end {% if row.difference >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(row.difference) }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                        <div class="col-md-12">
+                            <canvas id="chart-{{ item.id }}"></canvas>
                         </div>
                     </div>
                     <div class="mt-3 text-end">
+                        {% if item.id != 'miscellaneous' %}
                         <a href="{{ url_for('reports.budget_analysis', budget_id=item.id) }}" class="btn btn-info btn-sm">Analyze Budget</a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
+            {% endif %}
             {% endfor %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2 class="h5 mb-0">Miscellaneous Spending</h2>
+                </div>
+                <div class="card-body">
+                    <p class="card-text fs-4">${{ "%.2f"|format(miscellaneous_spending) }}</p>
+                </div>
+            </div>
         </div>
     </div>
 {% endblock %}
@@ -458,6 +431,34 @@
                     }
                 }
             });
+
+            {% for item in performance_data %}
+            var ctx = document.getElementById('chart-{{ item.id }}').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: {{ item.history|map(attribute='period_name')|list|tojson|safe }},
+                    datasets: [{
+                        label: 'Budgeted',
+                        data: {{ item.history|map(attribute='budgeted')|list|tojson|safe }},
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    }, {
+                        label: 'Actual',
+                        data: {{ item.history|map(attribute='actual')|list|tojson|safe }},
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            {% endfor %}
         });
     </script>
 {% endblock %}

@@ -5,7 +5,7 @@ from app.utils import get_account_choices
 
 accounts_bp = Blueprint('accounts', __name__)
 
-@accounts_bp.route('/accounts')
+@accounts_bp.route('/')
 def accounts():
     account_choices = get_account_choices(session['client_id'])
     

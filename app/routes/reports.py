@@ -346,6 +346,7 @@ def budget():
         amount = request.form.get('amount')
         period = request.form.get('period')
         start_date_str = request.form.get('start_date')
+        keywords = request.form.get('keywords')
         
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
 
@@ -365,7 +366,8 @@ def budget():
             start_date=start_date,
             end_date=end_date,
             client_id=session['client_id'],
-            parent_id=request.form.get('parent_id') if request.form.get('parent_id') else None
+            parent_id=request.form.get('parent_id') if request.form.get('parent_id') else None,
+            keywords=keywords
         )
 
         category_names = request.form.getlist('categories')
@@ -389,6 +391,9 @@ def budget():
         return level
 
     all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
+    overall_budget = Budget.query.filter_by(client_id=session['client_id'], name='Overall Budget').first()
+    other_budgets = Budget.query.filter(Budget.client_id == session['client_id'], Budget.name != 'Overall Budget').order_by(Budget.name).all()
+
     budget_ids = [b.id for b in all_budgets]
     
     today = datetime.now().date()
@@ -397,24 +402,73 @@ def budget():
 
     actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
 
+    overall_budget_spent = actual_spendings.get(overall_budget.id, {'actual_spent': 0.0})['actual_spent'] if overall_budget else 0.0
+    overall_budget_transaction_ids = actual_spendings.get(overall_budget.id, {'transaction_ids': set()})['transaction_ids'] if overall_budget else set()
+
+    all_other_transaction_ids = set()
+    for budget in other_budgets:
+        all_other_transaction_ids.update(actual_spendings.get(budget.id, {'transaction_ids': set()})['transaction_ids'])
+
+    other_budgets_spent = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(all_other_transaction_ids)).scalar() or 0
+
+    miscellaneous_spending = overall_budget_spent - other_budgets_spent
+
     budgets_data = []
-    for budget in all_budgets:
-        actual_spent = actual_spendings.get(budget.id, 0.0)
+    if overall_budget:
+        budgets_data.append({
+            'id': overall_budget.id,
+            'name': overall_budget.name,
+            'categories': [],
+            'period': overall_budget.period,
+            'start_date': overall_budget.start_date.isoformat(),
+            'amount': overall_budget.amount,
+            'actual_spent': overall_budget_spent,
+            'remaining': overall_budget.amount - overall_budget_spent if overall_budget.amount else 0,
+            'parent_id': None,
+            'level': 0,
+            'is_parent': True,
+            'keywords': overall_budget.keywords
+        })
+
+    for budget in other_budgets:
+        budget_info = actual_spendings.get(budget.id, {'actual_spent': 0.0, 'transaction_ids': set()})
+        actual_spent = budget_info['actual_spent']
+        
         budgets_data.append({
             'id': budget.id,
             'name': budget.name,
-            'categories': budget.categories,
+            'categories': [c.name for c in budget.categories],
             'period': budget.period,
-            'start_date': budget.start_date,
+            'start_date': budget.start_date.isoformat(),
             'amount': budget.amount,
             'actual_spent': actual_spent,
             'remaining': budget.amount - actual_spent,
             'parent_id': budget.parent_id,
             'level': get_budget_level(budget, all_budgets),
-            'is_parent': bool(budget.children)
+            'is_parent': bool(budget.children),
+            'keywords': budget.keywords
         })
 
-    all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
+
+
+    # Now, let's adjust the parent budget's spending to avoid double-counting
+    budgets_by_id = {b['id']: b for b in budgets_data}
+    for budget_data in sorted(budgets_data, key=lambda b: b.get('level', 0), reverse=True):
+        if budget_data.get('parent_id') and budget_data['parent_id'] in budgets_by_id:
+            parent = budgets_by_id[budget_data['parent_id']]
+            
+            parent_transaction_ids = actual_spendings.get(parent['id'], {'transaction_ids': set()})['transaction_ids']
+            child_transaction_ids = actual_spendings.get(budget_data['id'], {'transaction_ids': set()})['transaction_ids']
+            
+            overlapping_transactions = parent_transaction_ids.intersection(child_transaction_ids)
+            
+            if overlapping_transactions:
+                overlapping_amount = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(overlapping_transactions)).scalar() or 0
+                parent['actual_spent'] -= overlapping_amount
+                if 'remaining' in parent and 'amount' in parent and isinstance(parent['amount'], (int, float)):
+                    parent['remaining'] = parent['amount'] - parent['actual_spent']
+
+    all_budgets_for_form = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
     journal_categories = db.session.query(JournalEntries.category).filter(
         JournalEntries.client_id == session['client_id'], 
         JournalEntries.category != None, 
@@ -429,7 +483,7 @@ def budget():
         
     all_categories = [{'name': name} for name in sorted(list(category_names))]
 
-    return render_template('budget.html', budgets_data=budgets_data, all_budgets=all_budgets, all_categories=all_categories)
+    return render_template('budget.html', budgets_data=json.dumps(budgets_data), all_budgets=all_budgets_for_form, all_categories=all_categories)
 
 @reports_bp.route('/budget/<int:budget_id>/delete', methods=['POST'])
 def delete_budget(budget_id):
@@ -445,6 +499,7 @@ def delete_budget(budget_id):
 @reports_bp.route('/budget/<int:budget_id>/edit', methods=['GET', 'POST'])
 def edit_budget(budget_id):
     budget = Budget.query.get_or_404(budget_id)
+    budget.categories_names = [c.name for c in budget.categories]
     if budget.client_id != session.get('client_id'):
         flash('You do not have permission to edit this budget.', 'danger')
         return redirect(url_for('reports.budget'))
@@ -455,6 +510,7 @@ def edit_budget(budget_id):
         budget.period = request.form.get('period')
         budget.start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
         budget.parent_id = request.form.get('parent_id') if request.form.get('parent_id') else None
+        budget.keywords = request.form.get('keywords')
         
         budget.categories.clear()
         category_names = request.form.getlist('categories')
@@ -470,7 +526,19 @@ def edit_budget(budget_id):
         return redirect(url_for('reports.budget'))
 
     all_budgets = Budget.query.filter_by(client_id=session['client_id']).order_by(Budget.name).all()
-    all_categories = Category.query.filter_by(client_id=session['client_id']).order_by(Category.name).all()
+    journal_categories = db.session.query(JournalEntries.category).filter(
+        JournalEntries.client_id == session['client_id'], 
+        JournalEntries.category != None, 
+        JournalEntries.category != ''
+    ).distinct().all()
+    
+    existing_categories = Category.query.filter_by(client_id=session['client_id']).all()
+    
+    category_names = {c[0] for c in journal_categories}
+    for cat in existing_categories:
+        category_names.add(cat.name)
+        
+    all_categories = [{'name': name} for name in sorted(list(category_names))]
     return render_template('edit_budget.html', budget=budget, all_budgets=all_budgets, all_categories=all_categories)
 
 @reports_bp.route('/budget_analysis/<int:budget_id>', methods=['GET', 'POST'])
@@ -499,13 +567,21 @@ def budget_analysis(budget_id):
         else: # Default to ytd
             start_date = today.replace(month=1, day=1)
 
+    all_budgets_in_tree = [budget] + budget.get_all_descendants()
+    budget_ids = [b.id for b in all_budgets_in_tree]
+
     num_periods = get_num_periods(start_date, end_date, budget.period)
-    total_budgeted = budget.total_budgeted * num_periods
-    actual_spendings = get_budgets_actual_spent([budget_id], start_date, end_date)
-    actual_spent = actual_spendings.get(budget_id, 0.0)
+    total_budgeted = sum(b.total_budgeted * num_periods for b in all_budgets_in_tree)
+
+    actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
+    
+    all_transaction_ids = set()
+    for b_id in budget_ids:
+        all_transaction_ids.update(actual_spendings.get(b_id, {'transaction_ids': set()})['transaction_ids'])
+
+    actual_spent = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(all_transaction_ids)).scalar() or 0
     difference = total_budgeted - actual_spent
 
-    all_budgets_in_tree = [budget] + budget.get_all_descendants()
     all_categories = []
     all_keywords = []
     for b in all_budgets_in_tree:

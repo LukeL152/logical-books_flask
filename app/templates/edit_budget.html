@@ -13,9 +13,13 @@
             <label for="categories" class="form-label">Categories</label>
             <select id="categories" name="categories" class="form-select" multiple>
                 {% for category in all_categories %}
-                    <option value="{{ category.name }}" {% if category in budget.categories %}selected{% endif %}>{{ category.name }}</option>
+                    <option value="{{ category.name }}" {% if category.name in budget.categories_names %}selected{% endif %}>{{ category.name }}</option>
                 {% endfor %}
             </select>
+        </div>
+        <div class="col-md-4">
+            <label for="keywords" class="form-label">Keywords (comma-separated)</label>
+            <input type="text" id="keywords" name="keywords" class="form-control" value="{{ budget.keywords or '' }}">
         </div>
         <div class="col-md-4">
             <label for="parent_id" class="form-label">Parent Budget</label>

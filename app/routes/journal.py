@@ -7,7 +7,7 @@ from app.utils import get_account_choices, log_audit, update_all_balances
 
 journal_bp = Blueprint('journal', __name__)
 
-@journal_bp.route('/journal', methods=['GET', 'POST'])
+@journal_bp.route('/', methods=['GET', 'POST'])
 def journal():
     query = db.session.query(JournalEntries).options(db.joinedload(JournalEntries.transaction).joinedload(Transaction.source_account)).join(Account, JournalEntries.debit_account_id == Account.id).filter(JournalEntries.client_id == session['client_id'])
 
@@ -18,6 +18,7 @@ def journal():
         'start_date': request.form.get('start_date', ''),
         'end_date': request.form.get('end_date', ''),
         'description': request.form.get('description', ''),
+        'notes': request.form.get('notes', ''),
         'account_id': request.form.get('account_id', ''),
         'categories': request.form.getlist('categories'),
         'transaction_type': request.form.get('transaction_type', '')
@@ -28,8 +29,10 @@ def journal():
             query = query.filter(JournalEntries.date >= filters['start_date'])
         if filters['end_date']:
             query = query.filter(JournalEntries.date <= filters['end_date'])
-        if filters['description']:
-            query = query.filter(JournalEntries.description.ilike(f"%{filters['description']}"))
+        if filters.get('description'):
+            query = query.filter(JournalEntries.description.ilike(f"%{filters['description']}%" ))
+        if filters.get('notes'):
+            query = query.filter(JournalEntries.notes.ilike(f"%{filters['notes']}%" ))
         if filters['account_id']:
             query = query.filter(db.or_(JournalEntries.debit_account_id == filters['account_id'], JournalEntries.credit_account_id == filters['account_id']))
         if filters['categories']:

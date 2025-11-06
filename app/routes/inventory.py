@@ -39,7 +39,7 @@ def add_product():
         return redirect(url_for('inventory.products'))
     return render_template('add_product.html')
 
-@inventory_bp.route('/inventory')
+@inventory_bp.route('/')
 def inventory():
     inventory = Inventory.query.filter_by(client_id=session['client_id']).all()
     return render_template('inventory.html', inventory=inventory)

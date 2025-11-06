@@ -131,6 +131,7 @@ def create_app():
     app.cli.add_command(commands.export_data_command)
     app.cli.add_command(commands.import_data_command)
     app.cli.add_command(commands.create_user)
+    app.cli.add_command(commands.create_overall_budgets)
 
     with app.app_context():
         return app

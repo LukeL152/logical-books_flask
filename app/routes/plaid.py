@@ -67,7 +67,7 @@ def verify_plaid_webhook(request):
     except (jwt.InvalidTokenError, plaid.exceptions.ApiException) as e:
         return False, (str(e), 403)
 
-@plaid_bp.route('/plaid')
+@plaid_bp.route('/')
 def plaid_page():
     current_app.logger.info("--- plaid_page: start ---")
     if 'client_id' not in session:

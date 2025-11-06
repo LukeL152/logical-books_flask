@@ -8,7 +8,85 @@ from app.utils import get_account_tree, get_budgets_actual_spent, get_num_period
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
-@dashboard_bp.route('/dashboard', methods=['GET', 'POST'])
+def get_performance_data_recursive(budget, start_date, end_date):
+    performance_data = []
+    all_budgets_for_summary = []
+
+    # Get performance data for the current budget
+    num_periods = get_num_periods(start_date, end_date, budget.period)
+    total_budgeted = budget.total_budgeted * num_periods
+    
+    actual_spendings = get_budgets_actual_spent([budget.id], start_date, end_date)
+    actual_spent = actual_spendings.get(budget.id, {'actual_spent': 0.0})['actual_spent']
+    difference = total_budgeted - actual_spent
+    
+    all_budgets_for_summary.append({
+        'name': budget.name,
+        'budgeted': total_budgeted,
+        'actual': actual_spent,
+        'difference': difference,
+        'id': budget.id
+    })
+    
+    history = []
+    
+    # Calculate the number of periods based on the dashboard's date range
+    num_periods_to_display = get_num_periods(start_date, end_date, budget.period)
+
+    # Iterate backwards from the dashboard's end_date
+    current_end_of_period = end_date
+    for i in range(num_periods_to_display):
+        if budget.period == 'monthly':
+            period_start = current_end_of_period.replace(day=1)
+            period_end = current_end_of_period
+            period_name = period_start.strftime("%B %Y")
+            current_end_of_period = period_start - timedelta(days=1) # Move to end of previous month
+        elif budget.period == 'quarterly':
+            # Calculate start and end of current quarter
+            current_quarter_start_month = (current_end_of_period.month - 1) // 3 * 3 + 1
+            period_start = current_end_of_period.replace(month=current_quarter_start_month, day=1)
+            period_end = (period_start + relativedelta(months=3)) - timedelta(days=1)
+            period_name = f"Q{(current_quarter_start_month - 1) // 3 + 1} {current_end_of_period.year}"
+            current_end_of_period = period_start - timedelta(days=1) # Move to end of previous quarter
+        else: # yearly
+            period_start = current_end_of_period.replace(month=1, day=1)
+            period_end = current_end_of_period.replace(month=12, day=31)
+            period_name = str(current_end_of_period.year)
+            current_end_of_period = period_start - timedelta(days=1) # Move to end of previous year
+
+        # Ensure the period is within the dashboard's overall start_date and end_date
+        effective_period_start = max(period_start, start_date)
+        effective_period_end = min(period_end, end_date)
+
+        hist_actual_spendings = get_budgets_actual_spent([budget.id], effective_period_start, effective_period_end)
+        hist_actual_spent = hist_actual_spendings.get(budget.id, {'actual_spent': 0.0})['actual_spent']
+        history.append({
+            'period_name': period_name,
+            'budgeted': budget.total_budgeted,
+            'actual': hist_actual_spent,
+            'difference': budget.total_budgeted - hist_actual_spent
+        })
+    history.reverse()
+
+    performance_data.append({
+        'id': budget.id,
+        'name': budget.name,
+        'period': budget.period,
+        'amount': total_budgeted,
+        'history': history,
+        'level': budget.get_level(),
+        'parent_id': budget.parent_id,
+        'has_children': budget.children.count() > 0
+    })
+    
+    for child in budget.children:
+        child_performance_data, child_summary_data = get_performance_data_recursive(child, start_date, end_date)
+        performance_data.extend(child_performance_data)
+        all_budgets_for_summary.extend(child_summary_data)
+        
+    return performance_data, all_budgets_for_summary
+
+@dashboard_bp.route('/', methods=['GET', 'POST'])
 def dashboard():
     client_id = session.get('client_id')
     if not client_id:
@@ -142,85 +220,39 @@ def dashboard():
 
     # Budget performance data
     budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=None).all()
-    budget_ids = [b.id for b in budgets]
-    actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
-
     performance_data = []
     all_budgets_for_summary = []
-
     for budget in budgets:
-        num_periods = get_num_periods(start_date, end_date, budget.period)
-        total_budgeted = budget.total_budgeted * num_periods
-        actual_spent = actual_spendings.get(budget.id, 0.0)
-        difference = total_budgeted - actual_spent
+        child_performance_data, child_summary_data = get_performance_data_recursive(budget, start_date, end_date)
+        performance_data.extend(child_performance_data)
+        all_budgets_for_summary.extend(child_summary_data)
 
-        all_budgets_for_summary.append({
-            'name': budget.name,
-            'budgeted': total_budgeted,
-            'actual': actual_spent,
-            'difference': difference,
-            'id': budget.id
-        })
-
-    # Generate historical data for all periods within the selected date range
-        history = []
+    miscellaneous_spending = 0
+    overall_budget = Budget.query.filter_by(client_id=session['client_id'], name='Overall Budget').first()
+    if overall_budget:
+        all_other_budgets = Budget.query.filter(Budget.client_id == session['client_id'], Budget.name != 'Overall Budget').all()
         
-        # Calculate the number of periods based on the dashboard's date range
-        num_periods_to_display = get_num_periods(start_date, end_date, budget.period)
+        overall_actual_spendings = get_budgets_actual_spent([overall_budget.id], start_date, end_date)
+        overall_actual_spent = overall_actual_spendings.get(overall_budget.id, {'actual_spent': 0.0})['actual_spent']
 
-        # Iterate backwards from the dashboard's end_date
-        current_end_of_period = end_date
-        for i in range(num_periods_to_display):
-            if budget.period == 'monthly':
-                period_start = current_end_of_period.replace(day=1)
-                period_end = current_end_of_period
-                period_name = period_start.strftime("%B %Y")
-                current_end_of_period = period_start - timedelta(days=1) # Move to end of previous month
-            elif budget.period == 'quarterly':
-                # Calculate start and end of current quarter
-                current_quarter_start_month = (current_end_of_period.month - 1) // 3 * 3 + 1
-                period_start = current_end_of_period.replace(month=current_quarter_start_month, day=1)
-                period_end = (period_start + relativedelta(months=3)) - timedelta(days=1)
-                period_name = f"Q{(current_quarter_start_month - 1) // 3 + 1} {current_end_of_period.year}"
-                current_end_of_period = period_start - timedelta(days=1) # Move to end of previous quarter
-            else: # yearly
-                period_start = current_end_of_period.replace(month=1, day=1)
-                period_end = current_end_of_period.replace(month=12, day=31)
-                period_name = str(current_end_of_period.year)
-                current_end_of_period = period_start - timedelta(days=1) # Move to end of previous year
+        other_budgets_actual_spendings = get_budgets_actual_spent([b.id for b in all_other_budgets], start_date, end_date)
+        other_budgets_total_spent = sum(other_budgets_actual_spendings.get(b.id, {'actual_spent': 0.0})['actual_spent'] for b in all_other_budgets)
 
-            # Ensure the period is within the dashboard's overall start_date and end_date
-            effective_period_start = max(period_start, start_date)
-            effective_period_end = min(period_end, end_date)
+        miscellaneous_spending = overall_actual_spent - other_budgets_total_spent
 
-            hist_actual_spendings = get_budgets_actual_spent([budget.id], effective_period_start, effective_period_end)
-            hist_actual_spent = hist_actual_spendings.get(budget.id, 0.0)
-            history.append({
-                'period_name': period_name,
-                'budgeted': budget.total_budgeted,
-                'actual': hist_actual_spent,
-                'difference': budget.total_budgeted - hist_actual_spent
-            })
-        history.reverse()
-        history.reverse()
-
-        performance_data.append({
-            'id': budget.id,
-            'name': budget.name,
-            'period': budget.period,
-            'amount': total_budgeted,
-            'history': history
-        })
+    # Remove duplicates from all_budgets_for_summary
+    all_budgets_for_summary = [dict(t) for t in {tuple(d.items()) for d in all_budgets_for_summary}]
 
     # Calculate Overall Budget Health
+    all_transaction_ids = set()
+    for b in all_budgets_for_summary:
+        budget_spendings = get_budgets_actual_spent([b['id']], start_date, end_date)
+        all_transaction_ids.update(budget_spendings.get(b['id'], {'transaction_ids': set()})['transaction_ids'])
+
     overall_budgeted = sum(b['budgeted'] for b in all_budgets_for_summary)
-    overall_actual = sum(b['actual'] for b in all_budgets_for_summary)
+    overall_actual = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(all_transaction_ids)).scalar() or 0
     overall_difference = overall_budgeted - overall_actual
 
-    # Identify Top/Bottom Performers
-    sorted_budgets = sorted(all_budgets_for_summary, key=lambda x: x['difference'], reverse=True)
-    top_under_budget = sorted_budgets[:3]
-    top_over_budget = sorted_budgets[-3:]
 
     return render_template('dashboard.html', 
                            m_income=m_income, 
@@ -242,8 +274,7 @@ def dashboard():
                            overall_budgeted=overall_budgeted,
                            overall_actual=overall_actual,
                            overall_difference=overall_difference,
-                           top_under_budget=top_under_budget,
-                           top_over_budget=top_over_budget,
+                           miscellaneous_spending=miscellaneous_spending,
                            avg_daily_income=avg_daily_income,
                            avg_monthly_income=avg_monthly_income,
                            avg_daily_expense=avg_daily_expense,

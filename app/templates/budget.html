@@ -21,6 +21,11 @@
         </div>
 
         <div class="col-md-4">
+            <label for="keywords" class="form-label">Keywords (comma-separated)</label>
+            <input type="text" id="keywords" name="keywords" class="form-control">
+        </div>
+
+        <div class="col-md-4">
             <label for="parent_id" class="form-label">Parent Budget</label>
             <select id="parent_id" name="parent_id" class="form-select">
                 <option value="">No Parent</option>
@@ -60,41 +65,16 @@
         <tr>
             <th style="width: 40%;">Name</th>
             <th>Category</th>
+            <th>Keywords</th>
             <th>Period</th>
             <th>Start Date</th>
             <th class="text-end">Budgeted</th>
+            <th class="text-end">Actual</th>
+            <th class="text-end">Remaining</th>
             <th>Actions</th>
         </tr>
     </thead>
-    <tbody>
-        {% for budget in budgets_data %}
-            <tr data-id="{{ budget.id }}" data-parent-id="{{ budget.parent_id or '' }}" style="display: {{ '' if budget.parent_id is none else 'none' }};" {% if budget.is_parent %}class="budget-parent"{% endif %}>
-                <td>
-                    <span style="padding-left: {{ budget.level * 25 }}px;">
-                        {% if budget.is_parent %}
-                            <i class="bi bi-chevron-right expand-icon" style="cursor: pointer;"></i>
-                        {% else %}
-                            <i class="bi bi-dot" style="margin-left: 1.25rem;"></i>
-                        {% endif %}
-                        {{ budget.name }}
-                    </span>
-                </td>
-                <td>
-                    {% for category in budget.categories %}
-                        {{ category.name }}{% if not loop.last %}, {% endif %}
-                    {% endfor %}
-                </td>
-                <td>{{ budget.period }}</td>
-                <td>{{ budget.start_date }}</td>
-                <td class="text-end">{{ "%.2f"|format(budget.amount) }}</td>
-                <td>
-                    <a href="{{ url_for('reports.edit_budget', budget_id=budget.id) }}" class="btn btn-sm btn-primary">Edit</a>
-                    <form action="{{ url_for('reports.delete_budget', budget_id=budget.id) }}" method="post" style="display: inline;">
-                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this budget?')">Delete</button>
-                    </form>
-                </td>
-            </tr>
-        {% endfor %}
+    <tbody id="budget-table-body">
     </tbody>
 </table>
 {% endblock %}
@@ -102,8 +82,69 @@
 {% block scripts %}
 <script>
 $(document).ready(function() {
+    const budgetsData = {{ budgets_data | safe }};
+    const tableBody = $('#budget-table-body');
+
+    budgetsData.forEach(budget => {
+        const row = $('<tr />');
+        row.attr('data-id', budget.id);
+        row.attr('data-parent-id', budget.parent_id || '');
+
+        if (budget.is_parent) {
+            row.addClass('budget-parent');
+        }
+
+        const nameCell = $('<td />');
+        const nameSpan = $('<span />').css('padding-left', `${budget.level * 25}px`);
+        if (budget.is_parent) {
+            nameSpan.append($('<i />').addClass('bi bi-chevron-right expand-icon').css('cursor', 'pointer'));
+        } else {
+            nameSpan.append($('<i />').addClass('bi bi-dot').css('margin-left', '1.25rem'));
+        }
+        nameSpan.append(document.createTextNode(` ${budget.name}`));
+        nameCell.append(nameSpan);
+
+        const categoryCell = $('<td />').text(budget.categories.join(', '));
+        const keywordsCell = $('<td />').text(budget.keywords || '');
+        const periodCell = $('<td />').text(budget.period);
+        const startDateCell = $('<td />').text(budget.start_date);
+        const budgetedCell = $('<td />').addClass('text-end').text(typeof budget.amount === 'number' ? budget.amount.toFixed(2) : budget.amount);
+        const actualCell = $('<td />').addClass('text-end').text(budget.actual_spent.toFixed(2));
+        const remainingCell = $('<td />').addClass('text-end').text(typeof budget.remaining === 'number' ? budget.remaining.toFixed(2) : budget.remaining);
+
+        const actionsCell = $('<td />');
+        if (budget.id !== 'miscellaneous') {
+            const editLink = $('<a />').addClass('btn btn-sm btn-primary').attr('href', '{{ url_for("reports.edit_budget", budget_id=0) }}'.replace('/0/', `/${budget.id}/`)).text('Edit');
+            const deleteForm = $('<form />').attr('action', '{{ url_for("reports.delete_budget", budget_id=0) }}'.replace('/0/', `/${budget.id}/`)).attr('method', 'post').css('display', 'inline');
+            const deleteButton = $('<button />').addClass('btn btn-sm btn-danger').attr('type', 'submit').text('Delete').on('click', () => confirm('Are you sure you want to delete this budget?'));
+            deleteForm.append(deleteButton);
+            actionsCell.append(editLink).append(deleteForm);
+        }
+
+        row.append(nameCell, categoryCell, keywordsCell, periodCell, startDateCell, budgetedCell, actualCell, remainingCell, actionsCell);
+        tableBody.append(row);
+    });
+
     $('#categories').select2({
         tags: true
+    });
+
+    $('.expand-icon').on('click', function() {
+        const budgetId = $(this).closest('tr').data('id');
+        const children = $(`tr[data-parent-id=${budgetId}]`);
+        
+        if ($(this).hasClass('bi-chevron-right')) {
+            $(this).removeClass('bi-chevron-right').addClass('bi-chevron-down');
+            children.show();
+        } else {
+            $(this).removeClass('bi-chevron-down').addClass('bi-chevron-right');
+            children.hide();
+            children.find('.expand-icon').removeClass('bi-chevron-down').addClass('bi-chevron-right');
+            children.each(function() {
+                const childId = $(this).data('id');
+                $(`tr[data-parent-id=${childId}]`).hide();
+            });
+        }
     });
 });
 </script>

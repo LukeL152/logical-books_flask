@@ -565,10 +565,10 @@ def downgrade():
 
     with op.batch_alter_table('budget', schema=None) as batch_op:
         batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.alter_column('keywords',
-               existing_type=sa.String(length=255),
-               type_=sa.TEXT(),
-               existing_nullable=True)
+        # batch_op.alter_column('keywords',
+        #        existing_type=sa.String(length=255),
+        #        type_=sa.TEXT(),
+        #        existing_nullable=True)
         batch_op.alter_column('period',
                existing_type=sa.String(length=50),
                type_=sa.VARCHAR(length=20),
