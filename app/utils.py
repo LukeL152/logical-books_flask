@@ -105,7 +105,7 @@ def get_account_tree(accounts, start_date=None, end_date=None):
     return account_tree
 
 def get_budgets_actual_spent(budget_ids, start_date, end_date):
-    from app.models import Budget, JournalEntries
+    from app.models import Budget, JournalEntries, Account
     budgets = Budget.query.filter(Budget.id.in_(budget_ids)).all()
     if not budgets:
         return {}
@@ -114,44 +114,133 @@ def get_budgets_actual_spent(budget_ids, start_date, end_date):
     budget_spending = {budget_id: {'actual_spent': 0.0, 'transaction_ids': set()} for budget_id in budget_ids}
 
     for budget in budgets:
-        if budget.name == 'Overall Budget':
-            transactions = JournalEntries.query \
-                .join(Account, JournalEntries.debit_account_id == Account.id) \
-                .filter(Account.type == 'Expense', JournalEntries.client_id == client_id, JournalEntries.date >= start_date, JournalEntries.date <= end_date) \
-                .all()
-            budget_spending[budget.id]['actual_spent'] = sum(t.amount for t in transactions)
-            budget_spending[budget.id]['transaction_ids'] = {t.id for t in transactions}
-        else:
-            budget_categories = {c.name for c in budget.categories}
-            budget_keywords = {k.strip() for k in budget.keywords.split(',')} if budget.keywords else set()
+        if budget.is_miscellaneous:
+            budget_spending[budget.id]['actual_spent'] = 0.0
+            budget_spending[budget.id]['transaction_ids'] = set()
+            continue
 
-            query_filter = [
-                JournalEntries.client_id == client_id,
-                JournalEntries.date >= start_date,
-                JournalEntries.date <= end_date
-            ]
+        budget_categories = {c.name for c in budget.categories}
+        budget_keywords = {k.strip() for k in budget.keywords.split(',')} if budget.keywords else set()
 
-            category_filter = None
-            if budget_categories:
-                category_filter = JournalEntries.category.in_(budget_categories)
+        if not budget_categories and not budget_keywords:
+            budget_spending[budget.id]['actual_spent'] = 0.0
+            budget_spending[budget.id]['transaction_ids'] = set()
+            continue
 
-            keyword_filter = None
-            if budget_keywords:
-                keyword_filters = []
-                for keyword in budget_keywords:
-                    keyword_filters.append(JournalEntries.description.ilike(f'%{keyword}%'))
-                keyword_filter = db.or_(*keyword_filters)
+        query_filter = [
+            JournalEntries.client_id == client_id,
+            JournalEntries.date >= start_date,
+            JournalEntries.date <= end_date
+        ]
 
-            if category_filter is not None and keyword_filter is not None:
-                query_filter.append(db.or_(category_filter, keyword_filter))
-            elif category_filter is not None:
-                query_filter.append(category_filter)
-            elif keyword_filter is not None:
-                query_filter.append(keyword_filter)
+        category_filter = None
+        if budget_categories:
+            category_filter = JournalEntries.category.in_(budget_categories)
 
-            if len(query_filter) > 3: # client_id, start_date, end_date
-                transactions = JournalEntries.query.filter(*query_filter).all()
-                budget_spending[budget.id]['actual_spent'] = sum(t.amount for t in transactions)
-                budget_spending[budget.id]['transaction_ids'] = {t.id for t in transactions}
+        keyword_filter = None
+        if budget_keywords:
+            keyword_filters = []
+            for keyword in budget_keywords:
+                keyword_filters.append(JournalEntries.description.ilike(f'%{keyword}%'))
+            keyword_filter = db.or_(*keyword_filters)
+
+        if category_filter is not None and keyword_filter is not None:
+            query_filter.append(db.or_(category_filter, keyword_filter))
+        elif category_filter is not None:
+            query_filter.append(category_filter)
+        elif keyword_filter is not None:
+            query_filter.append(keyword_filter)
+
+        transactions = JournalEntries.query.join(Account, JournalEntries.debit_account_id == Account.id).filter(Account.type == 'Expense', *query_filter).all()
+        budget_spending[budget.id]['actual_spent'] = sum(t.amount for t in transactions)
+        budget_spending[budget.id]['transaction_ids'] = {t.id for t in transactions}
 
     return budget_spending
+
+def get_miscellaneous_historical_performance(budget, start_date, end_date):
+    from app.models import Budget, JournalEntries, Account
+    history = []
+    num_periods_to_display = get_num_periods(start_date, end_date, budget.period)
+
+    current_end_of_period = end_date
+    for i in range(num_periods_to_display):
+        if budget.period == 'monthly':
+            period_start = current_end_of_period.replace(day=1)
+            period_end = current_end_of_period
+            period_name = period_start.strftime("%B %Y")
+            current_end_of_period = period_start - timedelta(days=1)
+        elif budget.period == 'quarterly':
+            current_quarter_start_month = (current_end_of_period.month - 1) // 3 * 3 + 1
+            period_start = current_end_of_period.replace(month=current_quarter_start_month, day=1)
+            period_end = (period_start + relativedelta(months=3)) - timedelta(days=1)
+            period_name = f"Q{(current_quarter_start_month - 1) // 3 + 1} {current_end_of_period.year}"
+            current_end_of_period = period_start - timedelta(days=1)
+        else: # yearly
+            period_start = current_end_of_period.replace(month=1, day=1)
+            period_end = current_end_of_period.replace(month=12, day=31)
+            period_name = str(current_end_of_period.year)
+            current_end_of_period = period_start - timedelta(days=1)
+
+        effective_period_start = max(period_start, start_date)
+        effective_period_end = min(period_end, end_date)
+
+        total_expenses = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(
+            Account.type == 'Expense',
+            JournalEntries.client_id == budget.client_id,
+            JournalEntries.date >= effective_period_start,
+            JournalEntries.date <= effective_period_end
+        ).scalar() or 0
+
+        non_misc_budgets = Budget.query.filter(Budget.client_id == budget.client_id, Budget.is_miscellaneous == False).all()
+        non_misc_budget_ids = [b.id for b in non_misc_budgets]
+        non_misc_actual_spendings = get_budgets_actual_spent(non_misc_budget_ids, effective_period_start, effective_period_end)
+        total_non_misc_spent = sum(s['actual_spent'] for s in non_misc_actual_spendings.values())
+
+        hist_actual_spent = total_expenses - total_non_misc_spent
+
+        history.append({
+            'period_name': period_name,
+            'budgeted': budget.total_budgeted,
+            'actual': hist_actual_spent,
+            'difference': budget.total_budgeted - hist_actual_spent
+        })
+    history.reverse()
+    return history
+
+def get_miscellaneous_spending_breakdown(budget, start_date, end_date):
+    from app.models import Budget, JournalEntries, Account
+
+    client_id = budget.client_id
+
+    # Get all expense transactions for the period
+    all_expense_transactions = JournalEntries.query \
+        .join(Account, JournalEntries.debit_account_id == Account.id) \
+        .filter(Account.type == 'Expense', JournalEntries.client_id == client_id, JournalEntries.date >= start_date, JournalEntries.date <= end_date) \
+        .all()
+    all_expense_transaction_ids = {t.id for t in all_expense_transactions}
+
+    # Get transaction IDs covered by non-miscellaneous budgets
+    non_misc_budgets = Budget.query.filter(Budget.client_id == client_id, Budget.is_miscellaneous == False).all()
+    non_misc_budget_ids = [b.id for b in non_misc_budgets]
+    non_misc_budgets_actual_spendings = get_budgets_actual_spent(non_misc_budget_ids, start_date, end_date)
+    
+    covered_transaction_ids = set()
+    for b_id in non_misc_budget_ids:
+        covered_transaction_ids.update(non_misc_budgets_actual_spendings.get(b_id, {'transaction_ids': set()})['transaction_ids'])
+
+    # Transactions not covered by any non-miscellaneous budget
+    misc_transaction_ids = all_expense_transaction_ids - covered_transaction_ids
+
+    # Calculate spending breakdown by category for the miscellaneous transactions
+    spending_breakdown_query = db.session.query(
+        JournalEntries.category,
+        db.func.sum(JournalEntries.amount).label('total')
+    ).filter(
+        JournalEntries.id.in_(misc_transaction_ids),
+        JournalEntries.category != None,
+        JournalEntries.category != ''
+    ).group_by(JournalEntries.category).order_by(db.func.sum(JournalEntries.amount).desc())
+
+    spending_breakdown = spending_breakdown_query.all()
+
+    return spending_breakdown

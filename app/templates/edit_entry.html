@@ -1,58 +1,65 @@
-{% extends 'base.html' %}
-{% from '_macros.html' import render_account_options %}
+{% extends "base.html" %}
+
+{% block styles %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Edit Journal Entry</h1>
-
-<form method="POST" action="{{ url_for('journal.edit_entry', entry_id=entry.id) }}" class="p-3 border rounded">
-    <div class="row g-3">
-        <div class="col-md-6">
-            <label for="date" class="form-label">Date:</label>
-            <input type="date" id="date" name="date" class="form-control" value="{{ entry.date.strftime('%Y-%m-%d') }}" required>
+    <h1>Edit Journal Entry</h1>
+    <form method="POST">
+        <div class="form-group">
+            <label for="date">Date</label>
+            <input type="date" class="form-control" id="date" name="date" value="{{ entry.date.strftime('%Y-%m-%d') }}" required>
         </div>
-        <div class="col-md-6">
-            <label for="description" class="form-label">Description:</label>
-            <input type="text" id="description" name="description" class="form-control" value="{{ entry.description }}" required>
+        <div class="form-group">
+            <label for="description">Description</label>
+            <input type="text" class="form-control" id="description" name="description" value="{{ entry.description }}" required>
         </div>
-        <div class="col-md-6">
-            <label for="debit_account_id" class="form-label">Debit Account:</label>
-            <select id="debit_account_id" name="debit_account_id" class="form-select" required>
-                {{ render_account_options(accounts, selected_id=entry.debit_account_id) }}
+        <div class="form-group">
+            <label for="debit_account_id">Debit Account</label>
+            <select class="form-control" id="debit_account_id" name="debit_account_id" required>
+                {% for account_id, account_name, level in accounts %}
+                    <option value="{{ account_id }}" {% if entry.debit_account_id == account_id %}selected{% endif %}>{{ account_name }}</option>
+                {% endfor %}
             </select>
         </div>
-        <div class="col-md-6">
-            <label for="credit_account_id" class="form-label">Credit Account:</label>
-            <select id="credit_account_id" name="credit_account_id" class="form-select" required>
-                {{ render_account_options(accounts, selected_id=entry.credit_account_id) }}
+        <div class="form-group">
+            <label for="credit_account_id">Credit Account</label>
+            <select class="form-control" id="credit_account_id" name="credit_account_id" required>
+                {% for account_id, account_name, level in accounts %}
+                    <option value="{{ account_id }}" {% if entry.credit_account_id == account_id %}selected{% endif %}>{{ account_name }}</option>
+                {% endfor %}
             </select>
         </div>
-        <div class="col-md-6">
-            <label for="amount" class="form-label">Amount:</label>
-            <input type="number" step="0.01" id="amount" name="amount" class="form-control" value="{{ entry.amount }}" required>
+        <div class="form-group">
+            <label for="amount">Amount</label>
+            <input type="number" step="0.01" class="form-control" id="amount" name="amount" value="{{ entry.amount }}" required>
         </div>
-        <div class="col-md-6">
-            <label for="category" class="form-label">Category:</label>
-            <input type="text" id="category" name="category" class="form-control" value="{{ entry.category }}">
+        <div class="form-group">
+            <label for="category">Category</label>
+            <select class="form-control" id="category" name="category">
+                <option value="">-- Select a category --</option>
+                {% for category in categories %}
+                    <option value="{{ category.name }}" {% if entry.category == category.name %}selected{% endif %}>{{ category.name }}</option>
+                {% endfor %}
+            </select>
         </div>
-        <div class="col-12">
-            <label for="notes" class="form-label">Notes:</label>
-            <textarea id="notes" name="notes" class="form-control">{{ entry.notes or '' }}</textarea>
+        <div class="form-group">
+            <label for="notes">Notes</label>
+            <textarea class="form-control" id="notes" name="notes">{{ entry.notes or '' }}</textarea>
         </div>
-    </div>
-    <div class="mt-3">
-        <button type="submit" class="btn btn-primary">Update Entry</button>
+        <button type="submit" class="btn btn-primary">Submit</button>
         <a href="{{ url_for('journal.journal') }}" class="btn btn-secondary">Cancel</a>
-    </div>
-</form>
+    </form>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 $(document).ready(function() {
-    $('#debit_account_id').select2();
-    $('#credit_account_id').select2();
     $('#category').select2({
-        tags: true
+        tags: true,
+        placeholder: "Select or create a category"
     });
 });
 </script>

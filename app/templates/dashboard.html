@@ -235,49 +235,35 @@
 
 
 
-            {% for item in performance_data %}
-            {% if item.id == 'miscellaneous' %}
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h2 class="h5 mb-0">{{ item.name }}</h2>
-                </div>
-                <div class="card-body">
-                    <p class="card-text fs-4">${{ "%.2f"|format(item.actual_spent) }}</p>
-                </div>
-            </div>
-            {% else %}
-            <div class="card mb-4" data-id="{{ item.id }}" data-parent-id="{{ item.parent_id or '' }}" {% if item.parent_id %}style="display: none;"{% endif %}>
-                <div class="card-header">
-                    <h2 class="h5 mb-0" style="padding-left: {{ item.level * 20 }}px;">
-                        {% if item.has_children %}
-                            <i class="bi bi-chevron-right expand-icon" style="cursor: pointer;"></i>
-                        {% endif %}
-                        {{ item.name }}
-                    </h2>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-12">
-                            <canvas id="chart-{{ item.id }}"></canvas>
+                    {% for p_data in performance_data %}
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h2 class="h5 mb-0">{{ p_data.name }}</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <p class="card-text fs-5">Budgeted: ${{ "%.2f"|format(p_data.budgeted) }}</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <p class="card-text fs-5">Actual: ${{ "%.2f"|format(p_data.actual) }}</p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <p class="card-text fs-5">Difference: ${{ "%.2f"|format(p_data.difference) }}</p>
+                                        <p class="card-text fs-6">Avg Daily Spent: ${{ "%.2f"|format(p_data.avg_daily_spent) }}</p>
+                                        <p class="card-text fs-6">Avg Monthly Spent: ${{ "%.2f"|format(p_data.avg_monthly_spent) }}</p>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <canvas id="chart-{{ p_data.id }}" style="max-height: 300px;"></canvas>
+                                </div>
+                                <div class="mt-3 text-end">
+                                    <a href="{{ url_for('reports.budget_analysis', budget_id=p_data.id) }}" class="btn btn-info btn-sm">Analyze Budget</a>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="mt-3 text-end">
-                        {% if item.id != 'miscellaneous' %}
-                        <a href="{{ url_for('reports.budget_analysis', budget_id=item.id) }}" class="btn btn-info btn-sm">Analyze Budget</a>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-            {% endfor %}
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h2 class="h5 mb-0">Miscellaneous Spending</h2>
-                </div>
-                <div class="card-body">
-                    <p class="card-text fs-4">${{ "%.2f"|format(miscellaneous_spending) }}</p>
-                </div>
-            </div>
+                    {% endfor %}
+
         </div>
     </div>
 {% endblock %}

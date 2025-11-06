@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from app import db
-from app.models import JournalEntries, Account, Transaction
+from app.models import JournalEntries, Account, Transaction, Category
 from datetime import datetime
 from sqlalchemy import func
 from app.utils import get_account_choices, log_audit, update_all_balances
@@ -104,7 +104,15 @@ def edit_entry(entry_id):
         entry.debit_account_id = request.form['debit_account_id']
         entry.credit_account_id = request.form['credit_account_id']
         entry.amount = abs(float(request.form['amount']))
-        entry.category = request.form['category']
+        category_name = request.form['category']
+        if category_name:
+            category = Category.query.filter_by(name=category_name, client_id=session['client_id']).first()
+            if not category:
+                category = Category(name=category_name, client_id=session['client_id'])
+                db.session.add(category)
+            entry.category = category_name
+        else:
+            entry.category = None
         entry.notes = request.form.get('notes')
         update_all_balances(session['client_id'])
         db.session.commit()
@@ -113,7 +121,10 @@ def edit_entry(entry_id):
         return redirect(url_for('journal.journal'))
     else:
         account_choices = get_account_choices(session['client_id'])
-        return render_template('edit_entry.html', entry=entry, accounts=account_choices)
+        categories = Category.query.filter_by(client_id=session['client_id']).all()
+        if entry.category and entry.category not in [c.name for c in categories]:
+            categories.append(Category(name=entry.category, client_id=session['client_id']))
+        return render_template('edit_entry.html', entry=entry, accounts=account_choices, categories=categories)
 
 @journal_bp.route('/delete_entry/<int:entry_id>')
 def delete_entry(entry_id):

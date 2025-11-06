@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 import csv
 import io
 import json
-from app.utils import get_account_tree, get_budgets_actual_spent, get_num_periods
+from app.utils import get_account_tree, get_budgets_actual_spent, get_num_periods, get_miscellaneous_historical_performance, get_miscellaneous_spending_breakdown
 
 reports_bp = Blueprint('reports', __name__)
 
@@ -359,6 +359,14 @@ def budget():
         else:
             end_date = start_date + relativedelta(months=1) - timedelta(days=1)
 
+        is_miscellaneous = request.form.get('is_miscellaneous') == '1'
+
+        if is_miscellaneous:
+            existing_misc_budget = Budget.query.filter_by(client_id=session['client_id'], is_miscellaneous=True).first()
+            if existing_misc_budget:
+                flash('A miscellaneous budget already exists for this client.', 'danger')
+                return redirect(url_for('reports.budget'))
+
         new_budget = Budget(
             name=name,
             amount=amount,
@@ -367,7 +375,8 @@ def budget():
             end_date=end_date,
             client_id=session['client_id'],
             parent_id=request.form.get('parent_id') if request.form.get('parent_id') else None,
-            keywords=keywords
+            keywords=keywords,
+            is_miscellaneous=is_miscellaneous
         )
 
         category_names = request.form.getlist('categories')
@@ -511,6 +520,17 @@ def edit_budget(budget_id):
         budget.start_date = datetime.strptime(request.form.get('start_date'), '%Y-%m-%d').date()
         budget.parent_id = request.form.get('parent_id') if request.form.get('parent_id') else None
         budget.keywords = request.form.get('keywords')
+        budget.is_miscellaneous = request.form.get('is_miscellaneous') == '1'
+
+        if budget.is_miscellaneous:
+            existing_misc_budget = Budget.query.filter(
+                Budget.client_id == session['client_id'],
+                Budget.is_miscellaneous == True,
+                Budget.id != budget.id
+            ).first()
+            if existing_misc_budget:
+                flash('A miscellaneous budget already exists for this client.', 'danger')
+                return redirect(url_for('reports.edit_budget', budget_id=budget.id))
         
         budget.categories.clear()
         category_names = request.form.getlist('categories')
@@ -567,59 +587,112 @@ def budget_analysis(budget_id):
         else: # Default to ytd
             start_date = today.replace(month=1, day=1)
 
-    all_budgets_in_tree = [budget] + budget.get_all_descendants()
-    budget_ids = [b.id for b in all_budgets_in_tree]
+    actual_spent = 0.0
+    total_budgeted = 0.0
+    difference = 0.0
+    contributing_transactions = []
+    historical_performance = []
+    spending_breakdown = []
 
-    num_periods = get_num_periods(start_date, end_date, budget.period)
-    total_budgeted = sum(b.total_budgeted * num_periods for b in all_budgets_in_tree)
+    if budget.is_miscellaneous:
+        num_periods = get_num_periods(start_date, end_date, budget.period)
+        total_budgeted = budget.amount * num_periods
 
-    actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
-    
-    all_transaction_ids = set()
-    for b_id in budget_ids:
-        all_transaction_ids.update(actual_spendings.get(b_id, {'transaction_ids': set()})['transaction_ids'])
+        total_expenses = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(
+            Account.type == 'Expense',
+            JournalEntries.client_id == session['client_id'],
+            JournalEntries.date >= start_date,
+            JournalEntries.date <= end_date
+        ).scalar() or 0
 
-    actual_spent = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(all_transaction_ids)).scalar() or 0
-    difference = total_budgeted - actual_spent
+        non_misc_budgets = Budget.query.filter(Budget.client_id == session['client_id'], Budget.is_miscellaneous == False).all()
+        non_misc_budget_ids = [b.id for b in non_misc_budgets]
+        non_misc_actual_spendings = get_budgets_actual_spent(non_misc_budget_ids, start_date, end_date)
+        total_non_misc_spent = sum(s['actual_spent'] for s in non_misc_actual_spendings.values())
 
-    all_categories = []
-    all_keywords = []
-    for b in all_budgets_in_tree:
-        for c in b.categories:
-            all_categories.append(c.name)
-        if b.keywords:
-            all_keywords.extend([k.strip() for k in b.keywords.split(',')])
+        actual_spent = total_expenses - total_non_misc_spent
+        difference = total_budgeted - actual_spent
 
-    journal_filters = [
-        JournalEntries.client_id == session['client_id'],
-        JournalEntries.date >= start_date,
-        JournalEntries.date <= end_date,
-        Account.type == 'Expense'
-    ]
+        all_expense_transactions = JournalEntries.query \
+            .join(Account, JournalEntries.debit_account_id == Account.id) \
+            .filter(Account.type == 'Expense', JournalEntries.client_id == session['client_id'], JournalEntries.date >= start_date, JournalEntries.date <= end_date) \
+            .all()
+        all_expense_transaction_ids = {t.id for t in all_expense_transactions}
 
-    conditions = []
-    if all_categories:
-        conditions.append(JournalEntries.category.in_(all_categories))
-    if all_keywords:
-        conditions.append(db.or_(*[JournalEntries.description.ilike(f'%{kw}%') for kw in all_keywords]))
-    
-    if conditions:
-        journal_filters.append(db.or_(*conditions))
+        non_misc_transaction_ids = set()
+        for b_id in non_misc_budget_ids:
+            non_misc_transaction_ids.update(non_misc_actual_spendings.get(b_id, {'transaction_ids': set()})['transaction_ids'])
 
-    sort_by = request.args.get('sort_by', 'date')
-    sort_dir = request.args.get('sort_dir', 'desc')
+        misc_transaction_ids = all_expense_transaction_ids - non_misc_transaction_ids
 
-    sort_column = getattr(JournalEntries, sort_by, JournalEntries.date)
+        page = request.args.get('page', 1, type=int)
+        contributing_transactions = JournalEntries.query.filter(JournalEntries.id.in_(misc_transaction_ids)).order_by(JournalEntries.date.desc()).paginate(page=page, per_page=20, error_out=False)
 
-    if sort_dir == 'desc':
-        sort_order = sort_column.desc()
+        historical_performance = get_miscellaneous_historical_performance(budget, start_date, end_date)
+        spending_breakdown = get_miscellaneous_spending_breakdown(budget, start_date, end_date)
+
     else:
-        sort_order = sort_column.asc()
+        all_budgets_in_tree = [budget] + budget.get_all_descendants()
+        budget_ids = [b.id for b in all_budgets_in_tree]
 
-    contributing_transactions = JournalEntries.query.join(Account, JournalEntries.debit_account_id == Account.id).filter(*journal_filters).order_by(sort_order).all()
+        num_periods = get_num_periods(start_date, end_date, budget.period)
+        total_budgeted = sum(b.total_budgeted * num_periods for b in all_budgets_in_tree)
 
-    historical_performance = budget.get_historical_performance(start_date, end_date)
-    spending_breakdown = budget.get_spending_breakdown(start_date, end_date)
+        actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
+        
+        all_transaction_ids = set()
+        for b_id in budget_ids:
+            all_transaction_ids.update(actual_spendings.get(b_id, {'transaction_ids': set()})['transaction_ids'])
+
+        actual_spent = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(all_transaction_ids)).scalar() or 0
+        difference = total_budgeted - actual_spent
+
+        all_categories = []
+        all_keywords = []
+        for b in all_budgets_in_tree:
+            for c in b.categories:
+                all_categories.append(c.name)
+            if b.keywords:
+                all_keywords.extend([k.strip() for k in b.keywords.split(',')])
+
+        journal_filters = [
+            JournalEntries.client_id == session['client_id'],
+            JournalEntries.date >= start_date,
+            JournalEntries.date <= end_date,
+            Account.type == 'Expense'
+        ]
+
+        conditions = []
+        if all_categories:
+            conditions.append(JournalEntries.category.in_(all_categories))
+        if all_keywords:
+            conditions.append(db.or_(*[JournalEntries.description.ilike(f'%{kw}%') for kw in all_keywords]))
+        
+        if conditions:
+            journal_filters.append(db.or_(*conditions))
+
+        sort_by = request.args.get('sort_by', 'date')
+        sort_dir = request.args.get('sort_dir', 'desc')
+        description = request.args.get('description', '')
+        notes = request.args.get('notes', '')
+
+        if description:
+            journal_filters.append(JournalEntries.description.ilike(f'%{description}%'))
+        if notes:
+            journal_filters.append(JournalEntries.notes.ilike(f'%{notes}%'))
+
+        sort_column = getattr(JournalEntries, sort_by, JournalEntries.date)
+
+        if sort_dir == 'desc':
+            sort_order = sort_column.desc()
+        else:
+            sort_order = sort_column.asc()
+
+        page = request.args.get('page', 1, type=int)
+        contributing_transactions = JournalEntries.query.join(Account, JournalEntries.debit_account_id == Account.id).filter(*journal_filters).order_by(sort_order).paginate(page=page, per_page=20, error_out=False)
+
+        historical_performance = budget.get_historical_performance(start_date, end_date)
+        spending_breakdown = budget.get_spending_breakdown(start_date, end_date)
 
     return render_template('budget_analysis.html', 
                            budget=budget, 
@@ -633,6 +706,86 @@ def budget_analysis(budget_id):
                            spending_breakdown=spending_breakdown,
                            start_date=start_date.strftime('%Y-%m-%d'),
                            end_date=end_date.strftime('%Y-%m-%d'))
+
+@reports_bp.route('/export_budget_transactions/<int:budget_id>')
+def export_budget_transactions(budget_id):
+    budget = Budget.query.get_or_404(budget_id)
+    if budget.client_id != session.get('client_id'):
+        flash('You do not have permission to export these transactions.', 'danger')
+        return redirect(url_for('reports.budget_analysis', budget_id=budget_id))
+
+    start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+    end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+    description = request.args.get('description', '')
+    notes = request.args.get('notes', '')
+
+    if budget.is_miscellaneous:
+        # Get all expenses for the period
+        all_expenses_query = db.session.query(JournalEntries.id, JournalEntries.amount).join(Account, JournalEntries.debit_account_id == Account.id).filter(
+            Account.type == 'Expense',
+            JournalEntries.client_id == session['client_id'],
+            JournalEntries.date >= start_date,
+            JournalEntries.date <= end_date
+        )
+        all_expenses = {e.id: e.amount for e in all_expenses_query.all()}
+        all_expense_ids = set(all_expenses.keys())
+
+        # Get transaction IDs covered by non-miscellaneous budgets
+        non_misc_budgets = Budget.query.filter(Budget.client_id == session['client_id'], Budget.is_miscellaneous == False).all()
+        non_misc_budget_ids = [b.id for b in non_misc_budgets]
+        non_misc_budgets_actual_spendings = get_budgets_actual_spent(non_misc_budget_ids, start_date, end_date)
+        
+        covered_transaction_ids = set()
+        for b_id in non_misc_budget_ids:
+            covered_transaction_ids.update(non_misc_budgets_actual_spendings.get(b_id, {'transaction_ids': set()})['transaction_ids'])
+
+        # Transactions not covered by any non-miscellaneous budget
+        uncovered_transaction_ids = all_expense_ids - covered_transaction_ids
+
+        journal_filters = [JournalEntries.id.in_(uncovered_transaction_ids)]
+
+    else:
+        all_budgets_in_tree = [budget] + budget.get_all_descendants()
+        all_categories = []
+        all_keywords = []
+        for b in all_budgets_in_tree:
+            for c in b.categories:
+                all_categories.append(c.name)
+            if b.keywords:
+                all_keywords.extend([k.strip() for k in b.keywords.split(',')])
+
+        journal_filters = [
+            JournalEntries.client_id == session['client_id'],
+            JournalEntries.date >= start_date,
+            JournalEntries.date <= end_date,
+            Account.type == 'Expense'
+        ]
+
+        conditions = []
+        if all_categories:
+            conditions.append(JournalEntries.category.in_(all_categories))
+        if all_keywords:
+            conditions.append(db.or_(*[JournalEntries.description.ilike(f'%{kw}%') for kw in all_keywords]))
+        
+        if conditions:
+            journal_filters.append(db.or_(*conditions))
+
+    if description:
+        journal_filters.append(JournalEntries.description.ilike(f'%{description}%'))
+    if notes:
+        journal_filters.append(JournalEntries.notes.ilike(f'%{notes}%'))
+
+    transactions = JournalEntries.query.join(Account, JournalEntries.debit_account_id == Account.id).filter(*journal_filters).order_by(JournalEntries.date.desc()).all()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Date', 'Description', 'Category', 'Notes', 'Amount'])
+    for t in transactions:
+        cw.writerow([t.date, t.description, t.category, t.notes, t.amount])
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = f"attachment; filename=budget_{budget.name}_transactions.csv"
+    output.headers["Content-type"] = "text/csv"
+    return output
 
 @reports_bp.route('/audit_trail')
 def audit_trail():

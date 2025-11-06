@@ -19,6 +19,12 @@ def get_performance_data_recursive(budget, start_date, end_date):
     actual_spendings = get_budgets_actual_spent([budget.id], start_date, end_date)
     actual_spent = actual_spendings.get(budget.id, {'actual_spent': 0.0})['actual_spent']
     difference = total_budgeted - actual_spent
+
+    num_days = (end_date - start_date).days + 1
+    num_months = get_num_periods(start_date, end_date, 'monthly')
+
+    avg_daily_spent = actual_spent / num_days if num_days > 0 else 0
+    avg_monthly_spent = actual_spent / num_months if num_months > 0 else 0
     
     all_budgets_for_summary.append({
         'name': budget.name,
@@ -58,8 +64,24 @@ def get_performance_data_recursive(budget, start_date, end_date):
         effective_period_start = max(period_start, start_date)
         effective_period_end = min(period_end, end_date)
 
-        hist_actual_spendings = get_budgets_actual_spent([budget.id], effective_period_start, effective_period_end)
-        hist_actual_spent = hist_actual_spendings.get(budget.id, {'actual_spent': 0.0})['actual_spent']
+        if budget.is_miscellaneous:
+            total_expenses = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(
+                Account.type == 'Expense',
+                JournalEntries.client_id == budget.client_id,
+                JournalEntries.date >= effective_period_start,
+                JournalEntries.date <= effective_period_end
+            ).scalar() or 0
+
+            non_misc_budgets = Budget.query.filter(Budget.client_id == budget.client_id, Budget.is_miscellaneous == False).all()
+            non_misc_budget_ids = [b.id for b in non_misc_budgets]
+            non_misc_actual_spendings = get_budgets_actual_spent(non_misc_budget_ids, effective_period_start, effective_period_end)
+            total_non_misc_spent = sum(s['actual_spent'] for s in non_misc_actual_spendings.values())
+
+            hist_actual_spent = total_expenses - total_non_misc_spent
+        else:
+            hist_actual_spendings = get_budgets_actual_spent([budget.id], effective_period_start, effective_period_end)
+            hist_actual_spent = hist_actual_spendings.get(budget.id, {'actual_spent': 0.0})['actual_spent']
+
         history.append({
             'period_name': period_name,
             'budgeted': budget.total_budgeted,
@@ -72,11 +94,16 @@ def get_performance_data_recursive(budget, start_date, end_date):
         'id': budget.id,
         'name': budget.name,
         'period': budget.period,
-        'amount': total_budgeted,
+        'amount': budget.amount,  # This is the original 'amount'
+        'budgeted': total_budgeted,  # Use total_budgeted
+        'actual': actual_spent,  # Add this
+        'difference': total_budgeted - actual_spent,  # Use total_budgeted
+        'avg_daily_spent': avg_daily_spent,
+        'avg_monthly_spent': avg_monthly_spent,
         'history': history,
-        'level': budget.get_level(),
+        'level': 0, # This will be updated later
         'parent_id': budget.parent_id,
-        'has_children': budget.children.count() > 0
+        'has_children': bool(budget.children.first())
     })
     
     for child in budget.children:
@@ -177,13 +204,19 @@ def dashboard():
     income_pie_chart_data = json.dumps([item.total for item in income_breakdown])
 
     # KPIs for the selected period
-    revenue_accounts = Account.query.filter_by(client_id=session['client_id'], type='Revenue', parent_id=None).all()
-    revenue_data = get_account_tree(revenue_accounts, start_date, end_date)
-    income_this_period = sum(item['balance'] for item in revenue_data)
+    income_this_period = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.credit_account_id == Account.id).filter(
+        Account.type.in_(['Revenue', 'Income']),
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date
+    ).scalar() or 0
     
-    expense_accounts = Account.query.filter_by(client_id=session['client_id'], type='Expense', parent_id=None).all()
-    expense_data = get_account_tree(expense_accounts, start_date, end_date)
-    expenses_this_period = sum(item['balance'] for item in expense_data)
+    expenses_this_period = db.session.query(db.func.sum(JournalEntries.amount)).join(Account, JournalEntries.debit_account_id == Account.id).filter(
+        Account.type == 'Expense',
+        JournalEntries.client_id == session['client_id'],
+        JournalEntries.date >= start_date,
+        JournalEntries.date <= end_date
+    ).scalar() or 0
 
     m_income = income_this_period
     m_expenses = abs(expenses_this_period)
@@ -222,23 +255,33 @@ def dashboard():
     budgets = Budget.query.filter_by(client_id=session['client_id'], parent_id=None).all()
     performance_data = []
     all_budgets_for_summary = []
+    misc_budget = None
+    non_misc_budgets = []
+    for budget in budgets:
+        if budget.is_miscellaneous:
+            misc_budget = budget
+        else:
+            non_misc_budgets.append(budget)
+
     for budget in budgets:
         child_performance_data, child_summary_data = get_performance_data_recursive(budget, start_date, end_date)
         performance_data.extend(child_performance_data)
         all_budgets_for_summary.extend(child_summary_data)
 
-    miscellaneous_spending = 0
-    overall_budget = Budget.query.filter_by(client_id=session['client_id'], name='Overall Budget').first()
-    if overall_budget:
-        all_other_budgets = Budget.query.filter(Budget.client_id == session['client_id'], Budget.name != 'Overall Budget').all()
-        
-        overall_actual_spendings = get_budgets_actual_spent([overall_budget.id], start_date, end_date)
-        overall_actual_spent = overall_actual_spendings.get(overall_budget.id, {'actual_spent': 0.0})['actual_spent']
+    if misc_budget:
+        non_misc_budget_ids = [b.id for b in non_misc_budgets]
+        non_misc_actual_spendings = get_budgets_actual_spent(non_misc_budget_ids, start_date, end_date)
+        total_non_misc_spent = sum(s['actual_spent'] for s in non_misc_actual_spendings.values())
+        misc_actual_spent = m_expenses - total_non_misc_spent
 
-        other_budgets_actual_spendings = get_budgets_actual_spent([b.id for b in all_other_budgets], start_date, end_date)
-        other_budgets_total_spent = sum(other_budgets_actual_spendings.get(b.id, {'actual_spent': 0.0})['actual_spent'] for b in all_other_budgets)
+        for p_data in performance_data:
+            if p_data['id'] == misc_budget.id:
+                p_data['actual'] = misc_actual_spent
+                p_data['difference'] = p_data['budgeted'] - misc_actual_spent
+                p_data['avg_daily_spent'] = misc_actual_spent / ((end_date - start_date).days + 1) if (end_date - start_date).days + 1 > 0 else 0
+                p_data['avg_monthly_spent'] = misc_actual_spent / get_num_periods(start_date, end_date, 'monthly') if get_num_periods(start_date, end_date, 'monthly') > 0 else 0
 
-        miscellaneous_spending = overall_actual_spent - other_budgets_total_spent
+
 
     # Remove duplicates from all_budgets_for_summary
     all_budgets_for_summary = [dict(t) for t in {tuple(d.items()) for d in all_budgets_for_summary}]
@@ -250,7 +293,7 @@ def dashboard():
         all_transaction_ids.update(budget_spendings.get(b['id'], {'transaction_ids': set()})['transaction_ids'])
 
     overall_budgeted = sum(b['budgeted'] for b in all_budgets_for_summary)
-    overall_actual = db.session.query(db.func.sum(JournalEntries.amount)).filter(JournalEntries.id.in_(all_transaction_ids)).scalar() or 0
+    overall_actual = m_expenses
     overall_difference = overall_budgeted - overall_actual
 
 
@@ -274,7 +317,7 @@ def dashboard():
                            overall_budgeted=overall_budgeted,
                            overall_actual=overall_actual,
                            overall_difference=overall_difference,
-                           miscellaneous_spending=miscellaneous_spending,
+
                            avg_daily_income=avg_daily_income,
                            avg_monthly_income=avg_monthly_income,
                            avg_daily_expense=avg_daily_expense,

@@ -158,8 +158,10 @@ class Budget(db.Model):
     categories = db.relationship('Category', secondary=budget_categories,
                                  backref=db.backref('budgets', lazy='dynamic'))
 
+    is_miscellaneous = db.Column(db.Boolean, default=False, nullable=False)
+
     def __repr__(self):
-        return f'<Budget {self.name} for {self.amount}>'
+        return f'<Budget {self.name}>'
 
     def get_all_descendants(self):
         descendants = []

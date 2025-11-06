@@ -72,27 +72,57 @@
 
 <h2>Contributing Transactions</h2>
 {% if contributing_transactions %}
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>{{ sortable_header('date', 'Date') }}</th>
-            <th>{{ sortable_header('description', 'Description') }}</th>
-            <th>{{ sortable_header('category', 'Category') }}</th>
-            <th class="text-end">{{ sortable_header('amount', 'Amount') }}</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for transaction in contributing_transactions %}
-        <tr>
-            <td>{{ transaction.date.strftime('%Y-%m-%d') }}</td>
-            <td>{{ transaction.description }}</td>
-            <td>{{ transaction.category }}</td>
-            <td class="text-end">{{ "%.2f"|format(transaction.amount) }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% else %}
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <form action="{{ url_for('reports.budget_analysis', budget_id=budget.id) }}" method="get" class="form-inline">
+                    <div class="form-group mr-2">
+                        <input type="text" name="description" class="form-control" placeholder="Description" value="{{ request.args.get('description', '') }}">
+                    </div>
+                    <div class="form-group mr-2">
+                        <input type="text" name="notes" class="form-control" placeholder="Notes" value="{{ request.args.get('notes', '') }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Search</button>
+                </form>
+            </div>
+            <div class="col-md-6 text-right">
+                <a href="{{ url_for('reports.export_budget_transactions', budget_id=budget.id, start_date=start_date, end_date=end_date, description=request.args.get('description', ''), notes=request.args.get('notes', '')) }}" class="btn btn-secondary">Export to CSV</a>
+            </div>
+        </div>
+
+        <table class="table table-sm table-bordered">
+            <thead>
+                <tr>
+                    <th><a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, sort_by='date', sort_dir='asc' if request.args.get('sort_dir') == 'desc' else 'desc') }}">Date</a></th>
+                    <th><a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, sort_by='description', sort_dir='asc' if request.args.get('sort_dir') == 'desc' else 'desc') }}">Description</a></th>
+                    <th><a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, sort_by='category', sort_dir='asc' if request.args.get('sort_dir') == 'desc' else 'desc') }}">Category</a></th>
+                    <th><a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, sort_by='notes', sort_dir='asc' if request.args.get('sort_dir') == 'desc' else 'desc') }}">Notes</a></th>
+                    <th class="text-right"><a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, sort_by='amount', sort_dir='asc' if request.args.get('sort_dir') == 'desc' else 'desc') }}">Amount</a></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in contributing_transactions.items %}
+                <tr>
+                    <td>{{ entry.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ entry.description }}</td>
+                    <td>{{ entry.category }}</td>
+                    <td>{{ entry.notes }}</td>
+                    <td class="text-right">${{ "%.2f"|format(entry.amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="text-center">
+            {% set args = request.args.copy() %}
+            {% if args.pop('page', None) %}{% endif %}
+            {% if contributing_transactions.has_prev %}
+                <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, page=contributing_transactions.prev_num, **args) }}" class="btn btn-outline-secondary">Previous</a>
+            {% endif %}
+            <span class="align-middle">Page {{ contributing_transactions.page }} of {{ contributing_transactions.pages }}.</span>
+            {% if contributing_transactions.has_next %}
+                <a href="{{ url_for('reports.budget_analysis', budget_id=budget.id, page=contributing_transactions.next_num, **args) }}" class="btn btn-outline-secondary">Next</a>
+            {% endif %}
+        </div>{% else %}
 <p>No contributing transactions found for this period.</p>
 {% endif %}
 
