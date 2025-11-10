@@ -128,6 +128,7 @@ def create_link_token():
             country_codes=[CountryCode(c) for c in current_app.config['PLAID_COUNTRY_CODES']],
             language='en',
             redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),   # <<< keep this for OAuth inst’ns
+            webhook=current_app.config['PLAID_WEBHOOK_URL'],
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']
