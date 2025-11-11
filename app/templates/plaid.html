@@ -390,10 +390,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchTransactionsForms.forEach(form => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
+            console.log('Fetching transactions for item...');
             const plaidItemId = form.dataset.plaidItemId;
             const formData = new FormData(event.target);
             const data = Object.fromEntries(formData.entries());
             data.plaid_item_id = plaidItemId;
+            console.log('Fetch data:', data);
 
             const response = await fetch('/plaid/api/plaid/fetch_transactions', {
                 method: 'POST',
@@ -402,6 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(data),
             });
             const result = await response.json();
+            console.log('Fetch result:', result);
             if (result.status === 'success') {
                 alert(`Successfully fetched ${result.added} new transactions.`);
                 location.reload();
@@ -415,10 +418,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchTransactionsFormsAccount.forEach(form => {
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
+            console.log('Fetching transactions for account...');
             const plaidAccountId = form.dataset.plaidAccountId;
             const formData = new FormData(event.target);
             const data = Object.fromEntries(formData.entries());
             data.plaid_account_id = plaidAccountId;
+            console.log('Fetch data:', data);
 
             const response = await fetch('/plaid/api/plaid/fetch_transactions', {
                 method: 'POST',
@@ -427,6 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(data),
             });
             const result = await response.json();
+            console.log('Fetch result:', result);
             if (result.status === 'success') {
                 alert(`Successfully fetched ${result.added} new transactions.`);
                 location.reload();
