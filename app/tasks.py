@@ -1,5 +1,5 @@
 from app import db, scheduler
-from app.models import FixedAsset, Depreciation, JournalEntries, Account, RecurringTransaction, PendingPlaidLink, Transaction, Client, Budget, Notification
+from app.models import FixedAsset, Depreciation, JournalEntries, Account, RecurringTransaction, PendingPlaidLink, Transaction, Client, Budget, Notification, NotificationRule
 from datetime import datetime, timedelta
 from flask import session, current_app
 import logging
@@ -188,7 +188,7 @@ def check_budgets():
             actual_spendings = get_budgets_actual_spent(budget_ids, start_date, end_date)
 
             for budget in budgets:
-                actual_spent = actual_spendings.get(budget.id, 0.0)
+                actual_spent = actual_spendings.get(budget.id, {'actual_spent': 0.0})['actual_spent']
                 if actual_spent >= budget.total_budgeted * 0.8:
                     user = client.users[0] # Assuming one user per client for now
                     message = f"You have spent {actual_spent:.2f} of your {budget.total_budgeted:.2f} budget for {budget.name}."
