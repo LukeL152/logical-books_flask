@@ -636,6 +636,7 @@ def delete_institution():
 
         return jsonify({'status': 'success'})
     except Exception as e:
+        current_app.logger.error(f"Error deleting institution: {e}")
         return jsonify({'error': 'An error occurred while deleting the institution.'}), 500
 
 @plaid_bp.route('/api/plaid/debug_link_token', methods=['POST'])

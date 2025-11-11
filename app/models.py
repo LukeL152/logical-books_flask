@@ -347,7 +347,7 @@ class PlaidItem(db.Model):
     last_synced = db.Column(db.DateTime, default=datetime.utcnow)
     cursor = db.Column(db.String(255)) # For Plaid Transactions Sync
 
-    client = db.relationship('Client', backref='plaid_items')
+    client = db.relationship('Client', backref=db.backref('plaid_items', cascade="all, delete-orphan"))
 
     def __repr__(self):
         return f'<PlaidItem {self.institution_name}>'
@@ -362,7 +362,7 @@ class PlaidAccount(db.Model):
     subtype = db.Column(db.String(50))
     local_account_id = db.Column(db.Integer, db.ForeignKey('account.id')) # Link to local Account model
 
-    plaid_item = db.relationship('PlaidItem', backref='plaid_accounts')
+    plaid_item = db.relationship('PlaidItem', backref=db.backref('plaid_accounts', cascade="all, delete-orphan"))
     local_account = db.relationship('Account', backref='plaid_account_link')
 
     def __repr__(self):
