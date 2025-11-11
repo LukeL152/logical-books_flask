@@ -549,15 +549,14 @@ def fetch_transactions():
             access_token=item.access_token,
             start_date=start_date,
             end_date=end_date,
+            options=TransactionsGetRequestOptions(
+                account_ids=target_account_ids
+            )
         )
         response = current_app.plaid_client.transactions_get(transactions_get_request)
-        all_transactions = response['transactions']
-        
-        transactions = []
-        if target_account_ids is not None:
-            transactions = [t for t in all_transactions if t['account_id'].strip() in target_account_ids]
-        else:
-            transactions = all_transactions
+        transactions = response['transactions']
+        current_app.logger.info(f"Found {len(transactions)} transactions from Plaid for item {item.id}")
+
 
         account_id_map = {pa.account_id: pa.local_account_id for pa in PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()}
 
@@ -578,10 +577,12 @@ def fetch_transactions():
                 db.session.add(new_transaction)
                 added_count += 1
         
+        current_app.logger.info(f"Added {added_count} new transactions to the database.")
         update_all_balances(session['client_id'])
         db.session.commit()
         return jsonify({'status': 'success', 'added': added_count})
     except Exception as e:
+        current_app.logger.error(f"Error fetching transactions: {e}")
         return jsonify({'error': 'An error occurred while fetching transactions.'}), 500
 
 @plaid_bp.route('/api/plaid/delete_account', methods=['POST'])
