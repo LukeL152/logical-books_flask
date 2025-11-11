@@ -354,55 +354,69 @@ def sync_transactions():
         return "Unauthorized", 403
 
     added_count = 0
-    
-    try:
-        cursor = item.cursor
-        sync_request = TransactionsSyncRequest(
-            access_token=item.access_token,
-        )
-        if cursor:
-            sync_request.cursor = cursor
+    max_retries = 3
+    retries = 0
 
-        response = current_app.plaid_client.transactions_sync(sync_request)
-        
-        added = response['added']
-
-        # Filter transactions to only include those for the requested account
-        added_for_account = [t for t in added if t['account_id'] == plaid_account.account_id]
-        added_count = len(added_for_account)
-
-        for t in added_for_account:
-            if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
-                new_transaction = Transaction(
-                    plaid_transaction_id=t['transaction_id'],
-                date=t['date'],
-                description=t['name'],
-                amount=-t['amount'], # Plaid returns positive for debits, negative for credits
-                category=t['category'][0] if t['category'] else None,
-                client_id=session['client_id'],
-                is_approved=False,
-                source_account_id=plaid_account.local_account_id
-            )
-            db.session.add(new_transaction)
-
-        item.cursor = response['next_cursor']
-        item.last_synced = datetime.now()
-        update_all_balances(session['client_id'])
-        db.session.commit()
-
-    except plaid.exceptions.ApiException as e:
+    while retries < max_retries:
         try:
+            cursor = item.cursor
+            sync_request = TransactionsSyncRequest(
+                access_token=item.access_token,
+            )
+            if cursor:
+                sync_request.cursor = cursor
+
+            response = current_app.plaid_client.transactions_sync(sync_request)
+            
+            added = response['added']
+
+            # Filter transactions to only include those for the requested account
+            added_for_account = [t for t in added if t['account_id'] == plaid_account.account_id]
+            added_count = len(added_for_account)
+
+            for t in added_for_account:
+                if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
+                    new_transaction = Transaction(
+                        plaid_transaction_id=t['transaction_id'],
+                        date=t['date'],
+                        description=t['name'],
+                        amount=-t['amount'], # Plaid returns positive for debits, negative for credits
+                        category=t['category'][0] if t['category'] else None,
+                        client_id=session['client_id'],
+                        is_approved=False,
+                        source_account_id=plaid_account.local_account_id
+                    )
+                    db.session.add(new_transaction)
+
+            item.cursor = response['next_cursor']
+            item.last_synced = datetime.now()
+            update_all_balances(session['client_id'])
+            db.session.commit()
+            
+            # If successful, break the loop
+            break
+
+        except plaid.exceptions.ApiException as e:
             error_body = json.loads(e.body)
+            if error_body.get('error_code') == 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION':
+                current_app.logger.warning("Plaid sync mutation error. Retrying...")
+                retries += 1
+                item.cursor = None # Reset cursor
+                db.session.commit()
+                continue # Retry the loop
+            
             if 'error_code' in error_body and error_body['error_code'] == 'NO_ACCOUNTS':
                 current_app.logger.info("No accounts found for this item during transaction sync.")
                 return jsonify({'status': 'no_accounts'})
-        except (json.JSONDecodeError, AttributeError):
-             pass  # Not a Plaid error with a JSON body we can parse
-        current_app.logger.error(f"Plaid API error syncing transactions: {e}")
-        return jsonify({'error': 'A Plaid API error occurred while syncing transactions.'}), 500
-    except Exception as e:
-        current_app.logger.error(f"Error syncing transactions: {e}")
-        return jsonify({'error': 'An error occurred while syncing transactions.'}), 500
+            
+            current_app.logger.error(f"Plaid API error syncing transactions: {e}")
+            return jsonify({'error': 'A Plaid API error occurred while syncing transactions.'}), 500
+        except Exception as e:
+            current_app.logger.error(f"Error syncing transactions: {e}")
+            return jsonify({'error': 'An error occurred while syncing transactions.'}), 500
+
+    if retries == max_retries:
+        return jsonify({'error': 'Failed to sync transactions after multiple retries due to Plaid data mutations.'}), 500
 
     return jsonify({'status': 'success', 'added': added_count})
 
