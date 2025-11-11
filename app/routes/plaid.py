@@ -7,7 +7,6 @@ from plaid.api import plaid_api
 from plaid.model.products import Products
 from plaid.model.country_code import CountryCode
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
-from plaid.model.link_token_create_request_transactions import LinkTokenCreateRequestTransactions
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.link_token_get_request import LinkTokenGetRequest
 from plaid.model.link_token_create_request_update import LinkTokenCreateRequestUpdate
@@ -130,7 +129,9 @@ def create_link_token():
             language='en',
             redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),   # <<< keep this for OAuth inst’ns
             webhook=current_app.config['PLAID_WEBHOOK_URL'],
-            transactions=LinkTokenCreateRequestTransactions(days_requested=730)
+            transactions={
+                "days_requested": 730
+            }
         )
         resp = current_app.plaid_client.link_token_create(req)
         link_token = resp['link_token']
@@ -170,7 +171,9 @@ def generate_hosted_link(client_id):
             language='en',
             webhook=current_app.config['PLAID_WEBHOOK_URL'],
             redirect_uri=os.environ.get('PLAID_REDIRECT_URI'),
-            transactions=LinkTokenCreateRequestTransactions(days_requested=730),
+            transactions={
+                "days_requested": 730
+            },
             hosted_link={},
         )
         response = current_app.plaid_client.link_token_create(request)
