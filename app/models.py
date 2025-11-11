@@ -393,6 +393,7 @@ class Transaction(db.Model):
     debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
     credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
     rule_modified = db.Column(db.Boolean, default=False)
+    needs_manual_assignment = db.Column(db.Boolean, default=False)
     source_account_id = db.Column(db.Integer, db.ForeignKey('account.id')) # The account from which the transaction originated (e.g., bank account)
 
     client = db.relationship('Client', backref='transactions')
@@ -420,11 +421,19 @@ class AuditTrail(db.Model):
 class TransactionRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
-    keyword = db.Column(db.String(255), nullable=False)
+    keyword = db.Column(db.String(255))
+    category_condition = db.Column(db.String(120))
+    transaction_type = db.Column(db.String(50))
+    min_amount = db.Column(db.Float)
+    max_amount = db.Column(db.Float)
     new_category = db.Column(db.String(120))
+    new_description = db.Column(db.String(255))
     new_debit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
     new_credit_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
-    source_account_id = db.Column(db.Integer, db.ForeignKey('account.id')) # Optional: apply rule only to transactions from this account
+    source_account_id = db.Column(db.Integer, db.ForeignKey('account.id'))
+    is_automatic = db.Column(db.Boolean, default=False)
+    delete_transaction = db.Column(db.Boolean, default=False)
+    flag_for_manual_assignment = db.Column(db.Boolean, default=False)
 
     client = db.relationship('Client', backref='transaction_rules')
     new_debit_account = db.relationship('Account', foreign_keys=[new_debit_account_id], backref='rule_debits')
