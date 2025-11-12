@@ -107,7 +107,48 @@ def unapproved_transactions():
     needs_manual_assignment_transactions = [t for t in all_transactions if t.needs_manual_assignment]
 
     account_choices = get_account_choices(session['client_id'])
-    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, needs_manual_assignment_transactions=needs_manual_assignment_transactions, accounts=account_choices)
+    categories = db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all()
+    categories = [c[0] for c in categories if c[0]]
+    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, needs_manual_assignment_transactions=needs_manual_assignment_transactions, accounts=account_choices, categories=categories)
+
+@transactions_bp.route('/assign_category/<int:transaction_id>', methods=['POST'])
+def assign_category(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.client_id != session['client_id']:
+        return "Unauthorized", 403
+
+    category = request.form.get('category')
+    if not category:
+        flash('Category must be selected.', 'danger')
+        return redirect(url_for('transactions.unapproved_transactions'))
+
+    transaction.category = category
+    db.session.commit()
+
+    flash('Category assigned successfully.', 'success')
+    return redirect(url_for('transactions.unapproved_transactions'))
+
+@transactions_bp.route('/bulk_assign_category', methods=['POST'])
+def bulk_assign_category():
+    transaction_ids = request.form.getlist('transaction_ids')
+    category = request.form.get('category')
+
+    if not transaction_ids:
+        flash('No transactions selected.', 'warning')
+        return redirect(url_for('transactions.unapproved_transactions'))
+
+    if not category:
+        flash('Please select a category.', 'danger')
+        return redirect(url_for('transactions.unapproved_transactions'))
+
+    update_data = {'category': category}
+
+    Transaction.query.filter(Transaction.id.in_(transaction_ids), Transaction.client_id == session['client_id']).update(update_data, synchronize_session=False)
+
+    db.session.commit()
+    flash(f'{len(transaction_ids)} transactions updated successfully.', 'success')
+    return redirect(url_for('transactions.unapproved_transactions'))
+
 
 @transactions_bp.route('/delete_duplicates')
 def delete_duplicates():

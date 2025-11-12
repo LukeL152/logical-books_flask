@@ -14,6 +14,7 @@
             <li><a class="dropdown-item" href="{{ url_for('transactions.delete_duplicates') }}">Delete All Duplicates</a></li>
             <li><a class="dropdown-item" href="#" id="run-rules-btn">Run Rules</a></li>
             <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#assign-accounts-modal" id="assign-accounts-btn">Assign Accounts</a></li>
+            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#assign-category-modal" id="assign-category-btn">Assign Category</a></li>
         </ul>
     </div>
 </div>
@@ -40,7 +41,15 @@
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
-                <td>{{ transaction.category }}</td>
+                <td>
+                    <select name="category" class="form-control category-select">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                        <option value="{{ category }}" {% if transaction.category == category %}selected{% endif %}>{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" formaction="{{ url_for('transactions.assign_category', transaction_id=transaction.id) }}" class="btn btn-sm btn-primary mt-1">Save</button>
+                </td>
                 <td>{{ transaction.source_account.name if transaction.source_account else '' }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control debit-account-select">
@@ -85,7 +94,15 @@
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
-                <td>{{ transaction.category }}</td>
+                <td>
+                    <select name="category" class="form-control category-select">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                        <option value="{{ category }}" {% if transaction.category == category %}selected{% endif %}>{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" formaction="{{ url_for('transactions.assign_category', transaction_id=transaction.id) }}" class="btn btn-sm btn-primary mt-1">Save</button>
+                </td>
                 <td>{{ transaction.source_account.name if transaction.source_account else '' }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control debit-account-select">
@@ -131,7 +148,15 @@
                 <td>{{ transaction.date }}</td>
                 <td>{{ transaction.description }}</td>
                 <td>{{ "%.2f"|format(transaction.amount) }}</td>
-                <td>{{ transaction.category }}</td>
+                <td>
+                    <select name="category" class="form-control category-select">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                        <option value="{{ category }}" {% if transaction.category == category %}selected{% endif %}>{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" formaction="{{ url_for('transactions.assign_category', transaction_id=transaction.id) }}" class="btn btn-sm btn-primary mt-1">Save</button>
+                </td>
                 <td>{{ transaction.source_account.name if transaction.source_account else '' }}</td>
                 <td>
                     <select name="debit_account_{{ transaction.id }}" class="form-control debit-account-select">
@@ -186,6 +211,34 @@
     </div>
   </div>
 </div>
+
+<!-- Assign Category Modal -->
+<div class="modal fade" id="assign-category-modal" tabindex="-1" aria-labelledby="assignCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="assignCategoryModalLabel">Assign Category in Bulk</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Select the category to assign to the selected transactions.</p>
+                <div class="mb-3">
+                    <label for="bulk_category" class="form-label">Category</label>
+                    <select id="bulk_category" name="category" class="form-select">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                        <option value="{{ category }}">{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="bulk-assign-category-btn">Assign</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -197,16 +250,24 @@ $(document).ready(function() {
 
     $('.debit-account-select').select2();
     $('.credit-account-select').select2();
+    $('.category-select').select2({
+        tags: true
+    });
     $('#bulk_debit_account_id').select2({
         dropdownParent: $('#assign-accounts-modal')
     });
     $('#bulk_credit_account_id').select2({
         dropdownParent: $('#assign-accounts-modal')
     });
+    $('#bulk_category').select2({
+        dropdownParent: $('#assign-category-modal'),
+        tags: true
+    });
 
     const approveBtn = document.getElementById('approve-selected-btn');
     const deleteBtn = document.getElementById('delete-selected-btn');
     const assignBtn = document.getElementById('assign-accounts-btn');
+    const assignCategoryBtn = document.getElementById('assign-category-btn');
 
     function toggleActionBtns() {
         var checkedCount = needsManualAssignmentTable.rows().nodes().to$().find('input[type="checkbox"]:checked').length +
@@ -217,16 +278,20 @@ $(document).ready(function() {
             approveBtn.classList.add('disabled');
             deleteBtn.classList.add('disabled');
             assignBtn.classList.add('disabled');
+            assignCategoryBtn.classList.add('disabled');
             approveBtn.setAttribute('aria-disabled', 'true');
             deleteBtn.setAttribute('aria-disabled', 'true');
             assignBtn.setAttribute('aria-disabled', 'true');
+            assignCategoryBtn.setAttribute('aria-disabled', 'true');
         } else {
             approveBtn.classList.remove('disabled');
             deleteBtn.classList.remove('disabled');
             assignBtn.classList.remove('disabled');
+            assignCategoryBtn.classList.remove('disabled');
             approveBtn.removeAttribute('aria-disabled');
             deleteBtn.removeAttribute('aria-disabled');
             assignBtn.removeAttribute('aria-disabled');
+            assignCategoryBtn.removeAttribute('aria-disabled');
         }
     }
 
@@ -300,7 +365,32 @@ $(document).ready(function() {
         creditInput.value = creditAccountId;
         form.appendChild(creditInput);
 
+        // Disable individual account selects before submitting
+        $('.debit-account-select, .credit-account-select').prop('disabled', true);
+
         form.action = "{{ url_for('transactions.bulk_assign_accounts') }}";
+        form.submit();
+    });
+
+    document.getElementById('bulk-assign-category-btn').addEventListener('click', function() {
+        const form = document.getElementById('approve-form');
+        const category = document.getElementById('bulk_category').value;
+
+        if (!category) {
+            alert('Please select a category.');
+            return;
+        }
+
+        const categoryInput = document.createElement('input');
+        categoryInput.type = 'hidden';
+        categoryInput.name = 'category';
+        categoryInput.value = category;
+        form.appendChild(categoryInput);
+
+        // Disable individual category selects before submitting
+        $('.category-select').prop('disabled', true);
+
+        form.action = "{{ url_for('transactions.bulk_assign_category') }}";
         form.submit();
     });
 
