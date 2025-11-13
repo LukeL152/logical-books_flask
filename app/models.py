@@ -346,6 +346,7 @@ class PlaidItem(db.Model):
     institution_name = db.Column(db.String(255), nullable=False)
     last_synced = db.Column(db.DateTime, default=datetime.utcnow)
     cursor = db.Column(db.String(255)) # For Plaid Transactions Sync
+    initial_sync_complete = db.Column(db.Boolean, default=False, nullable=False)
 
     client = db.relationship('Client', backref=db.backref('plaid_items', cascade="all, delete-orphan"))
 
