@@ -293,12 +293,23 @@ def plaid_webhook():
 
     data = request.get_json()
     current_app.logger.info(f"Received Plaid webhook: {data}")
+    webhook_type = data.get('webhook_type')
     webhook_code = data.get('webhook_code')
-    link_token = data.get('link_token')
+    item_id = data.get('item_id')
 
-    current_app.logger.info(f"Received Plaid webhook: {data.get('webhook_type')} - {webhook_code}")
+    current_app.logger.info(f"Received Plaid webhook: {webhook_type} - {webhook_code}")
 
-    if webhook_code == 'SESSION_FINISHED':
+    if webhook_type == 'TRANSACTIONS':
+        if webhook_code in ('INITIAL_UPDATE', 'HISTORICAL_UPDATE'):
+            current_app.logger.info(f"Webhook received: {webhook_code} for item {item_id}. Triggering initial transaction sync.")
+            sync_initial_transactions(item_id)
+        elif webhook_code == 'DEFAULT_UPDATE':
+            # This is where you would handle incremental transaction updates
+            current_app.logger.info(f"Webhook received: {webhook_code} for item {item_id}. Not yet implemented.")
+            pass
+
+    elif webhook_type == 'LINK' and webhook_code == 'SESSION_FINISHED':
+        link_token = data.get('link_token')
         pending_link = PendingPlaidLink.query.filter_by(link_token=link_token).first()
 
         if not pending_link:
@@ -349,6 +360,78 @@ def plaid_webhook():
 
     current_app.logger.info("--- plaid_webhook: end (received) ---")
     return jsonify({'status': 'received'})
+
+def sync_initial_transactions(item_id):
+    """
+    Syncs initial transactions for a new item.
+    This is typically called after receiving an INITIAL_UPDATE or HISTORICAL_UPDATE webhook.
+    """
+    with current_app.app_context():
+        item = PlaidItem.query.filter_by(item_id=item_id).first()
+        if not item:
+            current_app.logger.warning(f"sync_initial_transactions: PlaidItem with item_id {item_id} not found.")
+            return
+
+        client_id = item.client_id
+        access_token = item.access_token
+        cursor = None
+
+        while True:
+            try:
+                sync_request = TransactionsSyncRequest(
+                    access_token=access_token,
+                )
+                if cursor:
+                    sync_request.cursor = cursor
+
+                response = current_app.plaid_client.transactions_sync(sync_request)
+                
+                added = response['added']
+                current_app.logger.info(f"sync_initial_transactions: Fetched {len(added)} new transactions for item {item_id}.")
+
+                plaid_accounts = PlaidAccount.query.filter_by(plaid_item_id=item.id).all()
+                account_id_map = {pa.account_id: pa.local_account_id for pa in plaid_accounts}
+
+                for t in added:
+                    if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
+                        source_account_id = account_id_map.get(t['account_id'])
+                        new_transaction = Transaction(
+                            plaid_transaction_id=t['transaction_id'],
+                            date=t['date'],
+                            description=t['name'],
+                            amount=-t['amount'],
+                            category=t['category'][0] if t['category'] else None,
+                            client_id=client_id,
+                            is_approved=False,
+                            source_account_id=source_account_id
+                        )
+                        db.session.add(new_transaction)
+
+                item.cursor = response['next_cursor']
+                item.last_synced = datetime.now()
+                db.session.commit()
+
+                if not response['has_more']:
+                    break
+                cursor = response['next_cursor']
+
+            except plaid.exceptions.ApiException as e:
+                error_body = json.loads(e.body)
+                if error_body.get('error_code') == 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION':
+                    current_app.logger.warning("Plaid sync mutation error during initial sync. Retrying...")
+                    item.cursor = None # Reset cursor
+                    db.session.commit()
+                    cursor = None
+                    continue
+                current_app.logger.error(f"Plaid API error during initial transaction sync for item {item_id}: {e}")
+                break
+            except Exception as e:
+                current_app.logger.error(f"Error during initial transaction sync for item {item_id}: {e}")
+                break
+        
+        update_all_balances(client_id)
+        current_app.logger.info(f"sync_initial_transactions: Finished for item {item_id}.")
+
 
 @plaid_bp.route('/api/transactions/sync', methods=['POST'])
 def sync_transactions():
