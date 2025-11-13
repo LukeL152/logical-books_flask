@@ -374,10 +374,9 @@ def sync_initial_transactions(item_id):
 
         client_id = item.client_id
         access_token = item.access_token
-        cursor = item.cursor
+        cursor = None
 
-        has_more = True
-        while has_more:
+        while True:
             try:
                 sync_request = TransactionsSyncRequest(
                     access_token=access_token,
@@ -407,28 +406,28 @@ def sync_initial_transactions(item_id):
                             source_account_id=source_account_id
                         )
                         db.session.add(new_transaction)
-                
+
+                item.cursor = response['next_cursor']
+                item.last_synced = datetime.now()
                 db.session.commit()
 
-                has_more = response['has_more']
+                if not response['has_more']:
+                    break
                 cursor = response['next_cursor']
 
             except plaid.exceptions.ApiException as e:
                 error_body = json.loads(e.body)
                 if error_body.get('error_code') == 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION':
                     current_app.logger.warning("Plaid sync mutation error during initial sync. Retrying...")
+                    item.cursor = None # Reset cursor
+                    db.session.commit()
                     cursor = None
                     continue
                 current_app.logger.error(f"Plaid API error during initial transaction sync for item {item_id}: {e}")
-                return # Exit if there's an API error
+                break
             except Exception as e:
                 current_app.logger.error(f"Error during initial transaction sync for item {item_id}: {e}")
-                return # Exit on other errors
-
-        item.cursor = cursor
-        item.last_synced = datetime.now()
-        item.initial_sync_complete = True
-        db.session.commit()
+                break
         
         update_all_balances(client_id)
         current_app.logger.info(f"sync_initial_transactions: Finished for item {item_id}.")
@@ -648,12 +647,6 @@ def fetch_transactions():
     if item.client_id != session['client_id']:
         return "Unauthorized", 403
 
-    if not item.initial_sync_complete:
-        return jsonify({
-            'error': 'Initial transaction sync has not completed for this item. Please wait a few moments and try again.',
-            'error_code': 'INITIAL_SYNC_PENDING'
-        }), 428  # Precondition Required
-
     try:
         transactions_get_request = TransactionsGetRequest(
             access_token=item.access_token,
@@ -691,17 +684,6 @@ def fetch_transactions():
         update_all_balances(session['client_id'])
         db.session.commit()
         return jsonify({'status': 'success', 'added': added_count})
-    except plaid.exceptions.ApiException as e:
-        # Catch the specific PRODUCT_NOT_READY error here as a fallback
-        error_body = json.loads(e.body)
-        if error_body.get('error_code') == 'PRODUCT_NOT_READY':
-            return jsonify({
-                'error': 'Plaid is not yet ready to return transaction data. Please wait a few moments and try again.',
-                'error_code': 'PRODUCT_NOT_READY'
-            }), 428 # Precondition Required
-        
-        current_app.logger.error(f"Error fetching transactions: {e}")
-        return jsonify({'error': 'An error occurred while fetching transactions.'}), 500
     except Exception as e:
         current_app.logger.error(f"Error fetching transactions: {e}")
         return jsonify({'error': 'An error occurred while fetching transactions.'}), 500
