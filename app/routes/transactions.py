@@ -1,8 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+import json
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from app import db
 from app.models import Transaction, JournalEntries, Account, TransactionRule, ImportTemplate, RecurringTransaction
 from app.utils import get_account_choices, log_audit
 from datetime import datetime
+from sqlalchemy import func
 from app.utils import get_account_choices, log_audit
 
 transactions_bp = Blueprint('transactions', __name__)
@@ -77,39 +79,11 @@ def cleanup_orphaned_transactions():
 
 @transactions_bp.route('/unapproved')
 def unapproved_transactions():
-    sort_by = request.args.get('sort', 'date')
-    direction = request.args.get('direction', 'desc')
-
-    sort_column = getattr(Transaction, sort_by, Transaction.date)
-
-    base_query = Transaction.query.options(db.joinedload(Transaction.source_account)).filter_by(client_id=session['client_id'], is_approved=False)
-
-    if direction == 'asc':
-        base_query = base_query.order_by(sort_column.asc())
-    else:
-        base_query = base_query.order_by(sort_column.desc())
-    
-    all_transactions = base_query.all()
-
-    journal_entries = JournalEntries.query.filter_by(client_id=session['client_id']).all()
-    journal_fingerprints = set((je.date, je.description.strip(), round(je.amount, 2)) for je in journal_entries)
-
-    # Duplicate detection
-    for t in all_transactions:
-        key = (t.date, t.description.strip(), round(abs(t.amount), 2))
-        if key in journal_fingerprints:
-            t.is_duplicate = True
-        else:
-            t.is_duplicate = False
-
-    rule_modified_transactions = [t for t in all_transactions if t.rule_modified and not t.needs_manual_assignment]
-    unmodified_transactions = [t for t in all_transactions if not t.rule_modified and not t.needs_manual_assignment]
-    needs_manual_assignment_transactions = [t for t in all_transactions if t.needs_manual_assignment]
-
     account_choices = get_account_choices(session['client_id'])
+    accounts_json = json.dumps([{'id': a[0], 'name': a[1]} for a in account_choices])
     categories = db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all()
-    categories = [c[0] for c in categories if c[0]]
-    return render_template('unapproved_transactions.html', rule_modified_transactions=rule_modified_transactions, unmodified_transactions=unmodified_transactions, needs_manual_assignment_transactions=needs_manual_assignment_transactions, accounts=account_choices, categories=categories)
+    categories_json = json.dumps([c[0] for c in categories if c[0]])
+    return render_template('unapproved_transactions.html', accounts_json=accounts_json, categories_json=categories_json)
 
 @transactions_bp.route('/assign_category/<int:transaction_id>', methods=['POST'])
 def assign_category(transaction_id):
@@ -607,3 +581,71 @@ def transaction_rules():
             rules_by_source[source_account_name] = []
         rules_by_source[source_account_name].append(rule)
     return render_template('transaction_rules.html', rules_by_source=rules_by_source)
+
+@transactions_bp.route('/unapproved_transactions_data/<table_id>')
+def unapproved_transactions_data(table_id):
+    draw = request.args.get('draw', 1, type=int)
+    start = request.args.get('start', 0, type=int)
+    length = request.args.get('length', 10, type=int)
+    search_value = request.args.get('search[value]', '')
+    order_column_index = request.args.get('order[0][column]', 0, type=int)
+    order_direction = request.args.get('order[0][dir]', 'asc')
+
+    columns = ['id', 'date', 'description', 'amount', 'category', 'source_account']
+    sort_column_name = columns[order_column_index]
+
+    base_query = Transaction.query.options(db.joinedload(Transaction.source_account)).filter(Transaction.client_id == session['client_id'], Transaction.is_approved == False)
+
+    if table_id == 'needs-manual-assignment-table':
+        base_query = base_query.filter(Transaction.needs_manual_assignment == True)
+    elif table_id == 'rule-modified-table':
+        base_query = base_query.filter(Transaction.rule_modified == True, Transaction.needs_manual_assignment == False)
+    elif table_id == 'unmodified-table':
+        base_query = base_query.filter(Transaction.rule_modified == False, Transaction.needs_manual_assignment == False)
+
+    total_records = base_query.count()
+
+    if search_value:
+        base_query = base_query.filter(Transaction.description.ilike(f'%{search_value}%'))
+
+    records_filtered = base_query.count()
+
+    if sort_column_name == 'source_account':
+        sort_column = Account.name
+        base_query = base_query.join(Transaction.source_account)
+    else:
+        sort_column = getattr(Transaction, sort_column_name, Transaction.date)
+
+    if order_direction == 'asc':
+        base_query = base_query.order_by(sort_column.asc())
+    else:
+        base_query = base_query.order_by(sort_column.desc())
+
+    transactions = base_query.offset(start).limit(length).all()
+
+    journal_entries = JournalEntries.query.filter_by(client_id=session['client_id']).all()
+    journal_fingerprints = set((je.date, je.description.strip(), round(je.amount, 2)) for je in journal_entries)
+
+    data = []
+    for t in transactions:
+        key = (t.date, t.description.strip(), round(abs(t.amount), 2))
+        is_duplicate = key in journal_fingerprints
+
+        data.append({
+            'id': t.id,
+            'date': t.date.strftime('%Y-%m-%d'),
+            'description': t.description,
+            'amount': f'{t.amount:.2f}',
+            'category': t.category or '',
+            'source_account': t.source_account.name if t.source_account else '',
+            'debit_account_id': t.debit_account_id,
+            'credit_account_id': t.credit_account_id,
+            'is_duplicate': is_duplicate
+        })
+
+    return jsonify({
+        'draw': draw,
+        'recordsTotal': total_records,
+        'recordsFiltered': records_filtered,
+        'data': data
+    })
