@@ -530,7 +530,9 @@ def add_transaction_rule():
         return redirect(url_for('transactions.transaction_rules'))
 
     accounts = get_account_choices(session['client_id'])
-    return render_template('add_transaction_rule.html', accounts=accounts)
+    categories = db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all()
+    categories = [c[0] for c in categories if c[0]]
+    return render_template('add_transaction_rule.html', accounts=accounts, categories=categories)
 
 @transactions_bp.route('/edit_transaction_rule/<int:rule_id>', methods=['GET', 'POST'])
 def edit_transaction_rule(rule_id):
@@ -558,7 +560,9 @@ def edit_transaction_rule(rule_id):
         return redirect(url_for('transactions.transaction_rules'))
 
     accounts = get_account_choices(session['client_id'])
-    return render_template('edit_transaction_rule.html', rule=rule, accounts=accounts)
+    categories = db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all()
+    categories = [c[0] for c in categories if c[0]]
+    return render_template('edit_transaction_rule.html', rule=rule, accounts=accounts, categories=categories)
 
 @transactions_bp.route('/delete_transaction_rule/<int:rule_id>')
 def delete_transaction_rule(rule_id):

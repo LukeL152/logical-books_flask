@@ -22,7 +22,12 @@
     <div class="row mt-3">
         <div class="col-md-6">
             <label for="category_condition" class="form-label">Category</label>
-            <input type="text" id="category_condition" name="category_condition" class="form-control" value="{{ rule.category_condition or '' }}">
+            <select id="category_condition" name="category_condition" class="form-select category-select-with-tags">
+                <option value="">Any</option>
+                {% for category in categories %}
+                <option value="{{ category }}" {% if rule.category_condition == category %}selected{% endif %}>{{ category }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="col-md-6">
             <label for="transaction_type" class="form-label">Transaction Type</label>
@@ -52,7 +57,12 @@
     <div class="row">
         <div class="col-md-6">
             <label for="new_category" class="form-label">Set New Category</label>
-            <input type="text" id="new_category" name="new_category" class="form-control" value="{{ rule.new_category or '' }}">
+            <select id="new_category" name="new_category" class="form-select category-select-with-tags">
+                <option value="">Do Not Change</option>
+                {% for category in categories %}
+                <option value="{{ category }}" {% if rule.new_category == category %}selected{% endif %}>{{ category }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="col-md-6">
             <label for="new_description" class="form-label">Set New Description</label>
@@ -115,10 +125,7 @@ $(document).ready(function() {
     $('#source_account_id').select2();
     $('#new_debit_account_id').select2();
     $('#new_credit_account_id').select2();
-    $('#category_condition').select2({
-        tags: true
-    });
-    $('#new_category').select2({
+    $('.category-select-with-tags').select2({
         tags: true
     });
 });
