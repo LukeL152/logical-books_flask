@@ -648,17 +648,20 @@ def fetch_transactions():
         return "Unauthorized", 403
 
     try:
-        transactions_get_request = TransactionsGetRequest(
-            access_token=item.access_token,
-            start_date=start_date,
-            end_date=end_date,
-            options=TransactionsGetRequestOptions(
-                account_ids=target_account_ids
+        all_transactions = []
+        offset = 0
+        count = 500 # Increased from 100 to 500 to reduce API calls
+        while True:
+            transactions_get_request = TransactionsGetRequest(
+                access_token=item.access_token,
+                start_date=start_date,
+                end_date=end_date,
+                options=TransactionsGetRequestOptions(
+                    account_ids=target_account_ids,
+                    offset=offset,
+                    count=count
+                )
             )
-        )
-        response = current_app.plaid_client.transactions_get(transactions_get_request)
-        transactions = response['transactions']
-        current_app.logger.info(f"Found {len(transactions)} transactions from Plaid for item {item.id}")
 
 
         account_id_map = {pa.account_id: pa.local_account_id for pa in PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()}
