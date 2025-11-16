@@ -650,7 +650,7 @@ def fetch_transactions():
     try:
         all_transactions = []
         offset = 0
-        count = 500 # Increased from 100 to 500 to reduce API calls
+        count = 500
         while True:
             transactions_get_request = TransactionsGetRequest(
                 access_token=item.access_token,
@@ -662,12 +662,21 @@ def fetch_transactions():
                     count=count
                 )
             )
+            response = current_app.plaid_client.transactions_get(transactions_get_request)
+            transactions = response['transactions']
+            all_transactions.extend(transactions)
+
+            if len(transactions) < count:
+                break
+            offset += len(transactions)
+
+        current_app.logger.info(f"Found {len(all_transactions)} transactions from Plaid for item {item.id}")
 
 
         account_id_map = {pa.account_id: pa.local_account_id for pa in PlaidAccount.query.filter(PlaidAccount.plaid_item_id == item.id).all()}
 
         added_count = 0
-        for t in transactions:
+        for t in all_transactions:
             if not Transaction.query.filter_by(plaid_transaction_id=t['transaction_id']).first():
                 source_account_id = account_id_map.get(t['account_id'])
                 new_transaction = Transaction(
