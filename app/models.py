@@ -34,7 +34,7 @@ class Role(db.Model):
 
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    business_name = db.Column(db.String(120), nullable=False)
+    business_name = db.Column(db.String(120), unique=True, nullable=False)
     contact_name = db.Column(db.String(120))
     contact_email = db.Column(db.String(120))
     contact_phone = db.Column(db.String(20))

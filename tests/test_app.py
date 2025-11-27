@@ -46,7 +46,7 @@ def authenticated_client(client):
 
 
 def test_create_client(authenticated_client):
-    response = authenticated_client.post('/add_client', data={
+    response = authenticated_client.post('/clients/add_client', data={
         'business_name': 'Test Client', 
         'contact_name': 'test', 
         'contact_email': 'test@test.com',
@@ -65,7 +65,7 @@ def test_create_client(authenticated_client):
 def test_create_duplicate_client(authenticated_client):
     """Test that creating a duplicate client is prevented."""
     # Create the first client
-    authenticated_client.post('/add_client', data={
+    authenticated_client.post('/clients/add_client', data={
         'business_name': 'Test Client', 
         'contact_name': 'test', 
         'contact_email': 'test@test.com',
@@ -80,7 +80,7 @@ def test_create_duplicate_client(authenticated_client):
     }, follow_redirects=True)
 
     # Try to create another client with the same name
-    response = authenticated_client.post('/add_client', data={
+    response = authenticated_client.post('/clients/add_client', data={
         'business_name': 'Test Client', 
         'contact_name': 'test', 
         'contact_email': 'test@test.com',
@@ -93,12 +93,12 @@ def test_create_duplicate_client(authenticated_client):
         'client_status': 'Active',
         'notes': ''
     }, follow_redirects=True)
-    assert b'already exists' in response.data
+    assert b'A client with that business name already exists.' in response.data
 
 def test_dashboard_loads(authenticated_client):
     """Test that the dashboard loads after selecting a client."""
     # Create a client first
-    response = authenticated_client.post('/add_client', data={
+    response = authenticated_client.post('/clients/add_client', data={
         'business_name': 'Test Client', 
         'contact_name': 'test', 
         'contact_email': 'test@test.com',
@@ -115,6 +115,6 @@ def test_dashboard_loads(authenticated_client):
     # Get the client from the database to get its ID
     test_client = Client.query.filter_by(business_name='Test Client').first()
     # Select the client
-    response = authenticated_client.get(f'/select_client/{test_client.id}', follow_redirects=True)
+    response = authenticated_client.get(f'/clients/client_detail/{test_client.id}', follow_redirects=True)
     assert response.status_code == 200
     assert b'Dashboard' in response.data

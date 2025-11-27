@@ -41,26 +41,30 @@ def add_client():
             notes=notes
         )
         db.session.add(new_client)
-        db.session.flush()  # Flush to get the new_client.id
+        try:
+            db.session.flush()  # Flush to get the new_client.id
 
-        # Create the Overall Budget
-        today = datetime.now().date()
-        start_date = today.replace(day=1)
-        end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
+            # Create the Overall Budget
+            today = datetime.now().date()
+            start_date = today.replace(day=1)
+            end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
 
-        overall_budget = Budget(
-            name="Overall Budget",
-            amount=0,
-            period="monthly",
-            start_date=start_date,
-            end_date=end_date,
-            client_id=new_client.id,
-            parent_id=None
-        )
-        db.session.add(overall_budget)
+            overall_budget = Budget(
+                name="Overall Budget",
+                amount=0,
+                period="monthly",
+                start_date=start_date,
+                end_date=end_date,
+                client_id=new_client.id,
+                parent_id=None
+            )
+            db.session.add(overall_budget)
 
-        db.session.commit()
-        flash('Client added successfully!', 'success')
+            db.session.commit()
+            flash('Client added successfully!', 'success')
+        except IntegrityError:
+            db.session.rollback()
+            flash('A client with that business name already exists.', 'danger')
         return redirect(url_for('clients.clients'))
     return render_template('add_client.html')
 

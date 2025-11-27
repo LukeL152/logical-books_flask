@@ -230,6 +230,53 @@ def bulk_actions():
         update_all_balances(session['client_id'])
         db.session.commit()
         flash(f'{len(entries)} entries unapproved and sent back to the unapproved list.', 'success')
+    elif action == 'apply_rules':
+        from app.models import TransactionRule
+        rules = TransactionRule.query.filter_by(client_id=session['client_id']).all()
+        entries = JournalEntries.query.filter(JournalEntries.id.in_(entry_ids), JournalEntries.client_id == session['client_id']).options(db.joinedload(JournalEntries.transaction)).all()
+        
+        updated_count = 0
+        for entry in entries:
+            for rule in rules:
+                # Check source account if the rule has one
+                if rule.source_account_id:
+                    if not entry.transaction or entry.transaction.source_account_id != rule.source_account_id:
+                        continue
+
+                # Check if the rule applies to the entry
+                if rule.keyword and rule.keyword.lower() not in entry.description.lower():
+                    continue
+                if rule.category_condition and rule.category_condition != entry.category:
+                    continue
+                # Check transaction type based on associated transaction amount
+                if rule.transaction_type:
+                    if not entry.transaction: # If no associated transaction, cannot determine transaction type
+                        continue
+                    # Assuming transaction.amount is negative for debit (money out) and positive for credit (money in)
+                    if rule.transaction_type == 'debit' and entry.transaction.amount > 0: # Rule is for debit (money out), but transaction is credit (money in)
+                        continue
+                    if rule.transaction_type == 'credit' and entry.transaction.amount < 0: # Rule is for credit (money in), but transaction is debit (money out)
+                        continue
+                if rule.min_amount is not None and entry.amount < rule.min_amount:
+                    continue
+                if rule.max_amount is not None and entry.amount > rule.max_amount:
+                    continue
+                
+                # Apply the rule
+                if rule.new_category:
+                    entry.category = rule.new_category
+                if rule.new_description:
+                    entry.description = rule.new_description
+                if rule.new_debit_account_id:
+                    entry.debit_account_id = rule.new_debit_account_id
+                if rule.new_credit_account_id:
+                    entry.credit_account_id = rule.new_credit_account_id
+                
+                updated_count += 1
+                break # Stop after first matching rule
+        
+        db.session.commit()
+        flash(f'{updated_count} entries updated successfully based on rules.', 'success')
     
     return redirect(url_for('journal.journal'))
 

@@ -19,7 +19,7 @@ def add_transaction():
     if request.method == 'POST':
         date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
         description = request.form['description']
-        amount = abs(float(request.form['amount']))
+        amount = float(request.form['amount'])
         new_transaction = Transaction(
             date=date, 
             description=description, 
@@ -79,11 +79,12 @@ def cleanup_orphaned_transactions():
 
 @transactions_bp.route('/unapproved')
 def unapproved_transactions():
+    accounts_for_macro = get_account_choices(session['client_id'])
     account_choices = get_account_choices(session['client_id'])
     accounts_json = json.dumps([{'id': a[0], 'name': a[1]} for a in account_choices])
     categories = db.session.query(Transaction.category).filter(Transaction.client_id == session['client_id']).distinct().all()
     categories_json = json.dumps([c[0] for c in categories if c[0]])
-    return render_template('unapproved_transactions.html', accounts_json=accounts_json, categories_json=categories_json)
+    return render_template('unapproved_transactions.html', accounts=accounts_for_macro, accounts_json=accounts_json, categories_json=categories_json)
 
 @transactions_bp.route('/assign_category/<int:transaction_id>', methods=['POST'])
 def assign_category(transaction_id):
@@ -568,7 +569,7 @@ def edit_transaction_rule(rule_id):
 def delete_transaction_rule(rule_id):
     rule = TransactionRule.query.get_or_404(rule_id)
     if rule.client_id != session.get('client_id'):
-        flash('You do not have permission to delete this rule.', 'danger')
+        flash('Permission denied.', 'danger')
         return redirect(url_for('transactions.transaction_rules'))
     db.session.delete(rule)
     db.session.commit()
