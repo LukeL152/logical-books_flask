@@ -4,6 +4,10 @@
 
     <form action="{{ url_for('transactions.edit_template', template_id=template.id) if template else url_for('transactions.add_template_for_account', account_id=account.id) }}" method="post" class="p-3 border rounded">
         <div class="row g-3">
+            <div class="col-md-6">
+                <label for="name" class="form-label">Template Name</label>
+                <input type="text" id="name" name="name" class="form-control" value="{{ template.name if template else '' }}" required>
+            </div>
             <div class="col-md-2">
                 <label for="date_col" class="form-label">Date Column</label>
                 <input type="number" id="date_col" name="date_col" class="form-control" value="{{ template.date_col if template else '' }}" required>

@@ -31,13 +31,14 @@
         <thead>
             <tr>
                 <th>Account</th>
-                <th>Template Status</th>
+                <th>Templates</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for account_id, account_name, level in accounts %}
-            {% set account = account_map[account_id] %}
+            {% set account_info = account_map[account_id] %}
+            {% set account = account_info['account'] %}
             <tr data-id="{{ account.id }}" data-parent-id="{{ account.parent_id }}" class="account-row {% if level > 0 %}child-row-{{ account.parent_id }}{% endif %}">
                 <td style="padding-left: {{ level * 25 }}px;">
                     {% if account.children.count() > 0 %}
@@ -46,20 +47,24 @@
                     {{ account_name }}
                 </td>
                 <td>
-                    {% set template = account_map[account_id].import_template %}
-                    {% if template %}
-                        <span class="badge bg-success">Template Exists</span>
+                    {% if account_info['templates'] %}
+                        <ul class="list-unstyled">
+                        {% for template in account_info['templates'] %}
+                            <li>{{ template.name }}</li>
+                        {% endfor %}
+                        </ul>
                     {% else %}
                         <span class="badge bg-warning text-dark">No Template</span>
                     {% endif %}
                 </td>
                 <td>
-                    {% if template %}
-                        <a href="{{ url_for('transactions.edit_template', template_id=template.id) }}" class="btn btn-sm btn-primary">Edit Template</a>
-                        <a href="{{ url_for('transactions.delete_template', template_id=template.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this template?')">Delete</a>
-                    {% else %}
-                        <a href="{{ url_for('transactions.add_template_for_account', account_id=account_id) }}" class="btn btn-sm btn-success">Create Template</a>
+                    {% if account_info['templates'] %}
+                        {% for template in account_info['templates'] %}
+                            <a href="{{ url_for('transactions.edit_template', template_id=template.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                            <a href="{{ url_for('transactions.delete_template', template_id=template.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this template?')">Delete</a>
+                        {% endfor %}
                     {% endif %}
+                    <a href="{{ url_for('transactions.add_template_for_account', account_id=account_id) }}" class="btn btn-sm btn-success">Create Template</a>
                 </td>
             </tr>
             {% endfor %}

@@ -1,5 +1,5 @@
 import json
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 from app import db
 from app.models import Transaction, JournalEntries, Account, TransactionRule, ImportTemplate, RecurringTransaction
 from app.utils import get_account_choices, log_audit
@@ -331,7 +331,14 @@ from app.utils import get_account_choices, log_audit
 @transactions_bp.route('/import', methods=['GET', 'POST'])
 def import_page():
     accounts = get_account_choices(session['client_id'])
-    account_map = {acc.id: acc for acc in Account.query.filter_by(client_id=session['client_id']).all()}
+    all_accounts = Account.query.filter_by(client_id=session['client_id']).all()
+    templates = ImportTemplate.query.filter_by(client_id=session['client_id']).all()
+    
+    account_map = {acc.id: {'account': acc, 'templates': []} for acc in all_accounts}
+    for t in templates:
+        if t.account_id in account_map:
+            account_map[t.account_id]['templates'].append(t)
+            
     return render_template('import.html', accounts=accounts, account_map=account_map)
 
 @transactions_bp.route('/edit_template/<int:template_id>', methods=['GET', 'POST'])
@@ -342,6 +349,7 @@ def edit_template(template_id):
         return redirect(url_for('transactions.import_page'))
     
     if request.method == 'POST':
+        template.name = request.form['name']
         template.date_col = int(request.form['date_col'])
         template.description_col = int(request.form['description_col'])
         template.amount_col = int(request.form.get('amount_col')) if request.form.get('amount_col') else None
@@ -374,6 +382,7 @@ def add_template_for_account(account_id):
     account = Account.query.get_or_404(account_id)
     if request.method == 'POST':
         new_template = ImportTemplate(
+            name=request.form['name'],
             account_id=account_id,
             client_id=session['client_id'],
             date_col=int(request.form['date_col']),
@@ -407,13 +416,14 @@ def import_csv():
 
     for file in files:
         if file and file.filename.endswith('.csv'):
+            current_app.logger.info(f"Processing CSV file: {file.filename}")
             stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
             csv_reader = csv.reader(stream)
             
             if template.has_header:
                 next(csv_reader, None)
 
-            for row in csv_reader:
+            for i, row in enumerate(csv_reader):
                 try:
                     date = datetime.strptime(row[template.date_col], '%Y-%m-%d').date()
                     description = row[template.description_col]
@@ -439,7 +449,9 @@ def import_csv():
                         source_account_id=account_id
                     )
                     db.session.add(new_transaction)
+                    current_app.logger.info(f"Successfully processed row {i+1}: {row}")
                 except (ValueError, IndexError) as e:
+                    current_app.logger.error(f"Error processing row {i+1}: {row}. Error: {e}")
                     flash(f'Error processing row: {row}. Error: {e}', 'danger')
                     continue
     
